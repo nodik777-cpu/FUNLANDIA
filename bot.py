@@ -1,0 +1,405 @@
+import os
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
+
+ADMIN_PHONE = "+998 93 381 00 55"
+CALL_CENTER = "+998 555 127 337"
+ADDRESS = "Ташкент, ул. Тимур Малика, 3"
+INSTAGRAM = "https://www.instagram.com/funlandiauz/"
+TELEGRAM = "https://t.me/Funlandia_Tashkent"
+
+def menu(lang="ru"):
+    if lang == "uz":
+        return ReplyKeyboardMarkup([
+            ["🎟️ Narxlar", "🎂 Tug‘ilgan kun"],
+            ["🎠 Ko‘ngilochar", "📍 Manzil"],
+            ["🎉 Tug‘ilgan kunni bron qilish"],
+            ["🕐 Ish vaqti", "📞 Kontakt"],
+            ["📸 Instagram", "📱 Telegram"],
+            ["🇷🇺 Русский"],
+        ], resize_keyboard=True)
+    return ReplyKeyboardMarkup([
+        ["🎟️ Цены", "🎂 День рождения"],
+        ["🎠 Развлечения", "📍 Адрес"],
+            ["🎉 Забронировать день рождения"],
+        ["🕐 Время работы", "📞 Контакт"],
+        ["📸 Instagram", "📱 Telegram"],
+        ["🇺🇿 O‘zbekcha"],
+    ], resize_keyboard=True)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["lang"] = "ru"
+    await update.message.reply_text(
+        "🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA! 🎉\n\n"
+        "Место, где дети играют, веселятся и получают яркие эмоции, "
+        "а родители отдыхают! ❤️\n\n"
+        "🛝 Лабиринты • 🤸 Батуты • 🎢 Горки • 🎯 Пневмопушки • 🧗 Тарзанка\n\n"
+        "Выберите интересующий раздел ниже 👇",
+        reply_markup=menu("ru")
+    )
+
+async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["lang"] = "uz"
+    await update.message.reply_text(
+        "🎉 FUNLANDIA'GA XUSH KELIBSIZ! 🎉\n\n"
+        "Bu yerda bolalar o‘ynaydi, quvonadi va yorqin taassurotlar oladi, "
+        "ota-onalar esa maroqli dam oladi! ❤️\n\n"
+        "🛝 Labirintlar • 🤸 Batutlar • 🎢 Tepaliklar • 🎯 Pnevmatik to‘plar • 🧗 Tarzanka\n\n"
+        "Kerakli bo‘limni tanlang 👇",
+        reply_markup=menu("uz")
+    )
+
+async def prices(update: Update, lang):
+    if lang == "uz":
+        text = (
+            "🎟️ FUNLANDIA NARXLARI\n\n"
+            "🛝 BOLALAR ZONASI\n"
+            "🏰 Labirintlar\n🎪 Puflanadigan batutlar\n🎢 Tepaliklar\n🎯 Pnevmatik to‘plar\n\n"
+            "💰 1 soat — 80 000 so‘m\n"
+            "💰 2 soat — 90 000 so‘m\n"
+            "♾️ Cheksiz — 100 000 so‘m\n\n"
+            "👧👦 1 yoshdan 16 yoshgacha bo‘lgan bolalar uchun kirish pullik.\n\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "🤸 BATUT ZONASI\n"
+            "🤸 Professional batutlar\n🧗 Tarzanka\n🛝 17 metrlik tepalik\n\n"
+            "💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n\n"
+            "⚠️ Batut zonasiga 7 yoshdan boshlab bolalar qo‘yiladi va ular ota-ona yoki katta yoshli hamroh nazoratida bo‘lishi kerak.\n\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "🎉 IKKALA ZONA — KO‘PROQ QUVONCH!\n"
+            "🔥 2 zona — 120 000 so‘m\n"
+            "♾️ Ikkala zonaga cheksiz kirish!\n\n"
+            "🎊 O‘YNA • KUL • FUNLANDIA'DA YORQIN TAASSUROTLAR OL!"
+        )
+    else:
+        text = (
+            "🎟️ ЦЕНЫ FUNLANDIA\n\n"
+            "🛝 ДЕТСКАЯ ЗОНА\n"
+            "🏰 Лабиринты\n🎪 Надувные батуты\n🎢 Горки\n🎯 Пневмопушки\n\n"
+            "💰 1 час — 80 000 сум\n"
+            "💰 2 часа — 90 000 сум\n"
+            "♾️ Безлимит — 100 000 сум\n\n"
+            "👧👦 Детям от 1 года до 16 лет — вход платный.\n\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "🤸 БАТУТНАЯ ЗОНА\n"
+            "🤸 Профессиональные батуты\n🧗 Тарзанка\n🛝 17-метровая горка\n\n"
+            "💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n\n"
+            "⚠️ На батутную зону допускаются дети от 7 лет и только под присмотром родителей или сопровождающего взрослого.\n\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "🎉 ДВЕ ЗОНЫ — БОЛЬШЕ ВЕСЕЛЬЯ!\n"
+            "🔥 Две зоны — 120 000 сум\n♾️ Безлимитное посещение обеих зон!\n\n"
+            "🎊 ИГРАЙ • ВЕСЕЛИСЬ • ПОЛУЧАЙ ЭМОЦИИ В FUNLANDIA!"
+        )
+    await update.message.reply_text(text, reply_markup=menu(lang))
+
+async def hours(update: Update, lang):
+    text = (
+        "🕐 ВРЕМЯ РАБОТЫ FUNLANDIA\n\n"
+        "🗓 Каждый день: 10:00–22:00\n\n"
+        "🧹 Каждый понедельник — санитарный день до 14:00.\n"
+        "🎉 Ждём вас с 14:00 до 22:00!"
+        if lang == "ru" else
+        "🕐 FUNLANDIA ISH VAQTI\n\n"
+        "🗓 Har kuni: 10:00–22:00\n\n"
+        "🧹 Har dushanba — 14:00 gacha sanitariya kuni.\n"
+        "🎉 Sizni 14:00 dan 22:00 gacha kutamiz!"
+    )
+    await update.message.reply_text(text, reply_markup=menu(lang))
+
+async def contacts(update: Update, lang):
+    if lang == "uz":
+        text = (
+            "📞 FUNLANDIA ALOQA\n\n"
+            "📞 Kontakt: +998933810055\n"
+            "☎️ Call-markaz: +998555127337\n\n"
+            "📱 Telegram: @Funlandia_Tashkent\n"
+            "📸 Instagram: @funlandiauz"
+        )
+    else:
+        text = (
+            "📞 КОНТАКТЫ FUNLANDIA\n\n"
+            "📞 Контакт: +998933810055\n"
+            "☎️ Колл-центр: +998555127337\n\n"
+            "📱 Telegram: @Funlandia_Tashkent\n"
+            "📸 Instagram: @funlandiauz"
+        )
+    await update.message.reply_text(text, reply_markup=menu(lang))
+
+async def direct_contact(update: Update, lang, kind):
+    if kind == "call":
+        text = (
+            "☎️ CALL-MARKAZ\n\n📞 +998555127337"
+            if lang == "uz" else
+            "☎️ КОЛЛ-ЦЕНТР\n\n📞 +998555127337"
+        )
+    else:
+        text = (
+            "📞 KONTAKT\n\n📞 +998933810055"
+            if lang == "uz" else
+            "📞 КОНТАКТ\n\n📞 +998933810055"
+        )
+    await update.message.reply_text(text, reply_markup=menu(lang))
+
+async def simple(update: Update, lang, kind):
+    if kind == "address":
+        text = f"📍 FUNLANDIA\n\n{ADDRESS}\n\n" + ("Sizni kutamiz! 🎉" if lang == "uz" else "Будем рады видеть вас! 🎉")
+        map_button = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                "🗺️ Xaritada ochish" if lang == "uz" else "🗺️ Открыть на карте",
+                url="https://yandex.uz/maps/-/CTT~uR0N"
+            )
+        ]])
+        await update.message.reply_text(text, reply_markup=map_button)
+        return
+    elif kind == "instagram":
+        text = f"📸 Instagram FUNLANDIA\n\n{INSTAGRAM}"
+    else:
+        text = f"📱 Telegram FUNLANDIA\n\n{TELEGRAM}"
+    await update.message.reply_text(text, reply_markup=menu(lang))
+
+async def attractions(update: Update, lang):
+    text = (
+        "🎠 BIZNING KO‘NGILOCHARLAR\n\n"
+        "🛝 4 qavatli labirintlar\n🎪 Puflanadigan batutlar\n🤸 Professional batutlar\n"
+        "🎢 Tepaliklar\n🛝 17 metrlik tepalik\n🧗 Tarzanka\n🎯 Pnevmatik to‘plar\n"
+        "🧸 Kichkintoylar zonasi\n🏖️ Kinetik qum\n🎠 Karusellar"
+        if lang == "uz" else
+        "🎠 НАШИ РАЗВЛЕЧЕНИЯ\n\n"
+        "🛝 4-этажные лабиринты\n🎪 Надувные батуты\n🤸 Профессиональные батуты\n"
+        "🎢 Горки\n🛝 17-метровая горка\n🧗 Тарзанка\n🎯 Пневмопушки\n"
+        "🧸 Зона для малышей\n🏖️ Кинетический песок\n🎠 Карусели"
+    )
+    await update.message.reply_text(text, reply_markup=menu(lang))
+
+async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data.get("lang", "ru")
+    context.user_data["birthday_step"] = 1
+    context.user_data["birthday"] = {}
+    text = (
+        "🎂 FUNLANDIA'DA TUG‘ILGAN KUN!\n\n"
+        "🎁 TUG‘ILGAN KUN EGASI UCHUN AKSIYA\n\n"
+        "Bayram bitta tanlangan zonada o‘tkaziladi:\n🛝 Bolalar maydonchasi\n🤸 Batut zonasi\n\n"
+        "👧 5 bola — 450 000 so‘m\n👦 10 bola — 900 000 so‘m\n\n"
+        "🍽️ STOL BUYURTMA QILISH\n🪑 3 soatga stol — 200 000 so‘m\n"
+        "➕ Qo‘shimcha vaqt — har bir soat uchun 50 000 so‘m\n\n"
+        "🪑 O‘TIRISH ZONASINI TANLASH\n1️⃣ Zona 1\n2️⃣ Zona 2\n3️⃣ Zona 3\n\n"
+        "💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\n\n"
+         "Ariza qoldirish uchun tug‘ilgan kun egasining ismini yozing:"
+        if lang == "uz" else
+        "🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA!\n\n"
+        "🎁 АКЦИЯ ДЛЯ ИМЕНИННИКА\n\n"
+        "Празднование проходит в одной выбранной зоне:\n🛝 Детская площадка\n🤸 Батутная зона\n\n"
+        "👧 5 детей — 450 000 сум\n👦 10 детей — 900 000 сум\n\n"
+        "🍽️ ЗАКАЗ СТОЛА\n🪑 Стол на 3 часа — 200 000 сум\n"
+        "➕ Дополнительное время — 50 000 сум за каждый час\n\n"
+        "🪑 ВЫБОР ЗОНЫ ПОСАДКИ\n1️⃣ Зона 1\n2️⃣ Зона 2\n3️⃣ Зона 3\n\n"
+        "💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\n\n"
+         "Чтобы оставить заявку, напишите имя именинника:"
+    )
+    await update.message.reply_text(text, reply_markup=menu(lang))
+
+async def birthday_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data.get("lang", "ru")
+    step = context.user_data["birthday_step"]
+    value = update.message.text.strip()
+    data = context.user_data["birthday"]
+    prompts = (
+        [
+            ("name", "📅 Bayram qaysi sanada bo‘ladi?"),
+            ("date", "👧👦 Nechta bola bo‘ladi?"),
+            ("children", "🕐 Qaysi vaqt sizga qulay?"),
+            ("time", "📞 Bog‘lanish uchun telefon raqamingizni yozing:"),
+            ("phone", "🪑 O‘tirish zonasini tanlang: 1-zona, 2-zona yoki 3-zona."),
+        ] if lang == "uz" else [
+            ("name", "📅 На какую дату планируете праздник?"),
+            ("date", "👧👦 Сколько будет детей?"),
+            ("children", "🕐 Какое время вас интересует?"),
+            ("time", "📞 Оставьте номер телефона для связи."),
+            ("phone", "🪑 Выберите зону посадки: Зона 1, Зона 2 или Зона 3."),
+        ]
+    )
+    key, prompt = prompts[step - 1]
+    data[key] = value
+    if step < 5:
+        context.user_data["birthday_step"] = step + 1
+        await update.message.reply_text(prompt)
+    else:
+        context.user_data["birthday_step"] = 6
+        await update.message.reply_text(prompt)
+
+async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data.get("lang", "ru")
+    data = context.user_data["birthday"]
+    data["seat_zone"] = update.message.text.strip()
+    username = update.effective_user.username or "нет username"
+    msg = (
+        "🎂 НОВАЯ ЗАЯВКА FUNLANDIA\n\n"
+        f"Именинник: {data['name']}\nДата: {data['date']}\nДетей: {data['children']}\n"
+        f"Время: {data['time']}\nТелефон: {data['phone']}\nЗона посадки: {data['seat_zone']}\nTelegram: @{username}"
+    )
+    if ADMIN_CHAT_ID:
+        try:
+            await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=msg)
+        except Exception:
+            pass
+    context.user_data.clear()
+    await update.message.reply_text(
+        "✅ Arizangiz qabul qilindi!\nAdministrator FUNLANDIA siz bilan bog‘lanadi."
+        if lang == "uz" else
+        "✅ Заявка принята!\n\n💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\nАдминистратор FUNLANDIA свяжется с вами.",
+        reply_markup=menu(lang)
+    )
+
+
+async def auto_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").lower().strip()
+    lang = context.user_data.get("lang", "ru")
+
+    if lang == "uz":
+        if any(k in text for k in ["narx", "qancha", "to‘lov", "tolov", "sum"]):
+            answer = (
+                "🎟️ FUNLANDIA NARXLARI\n\n"
+                "🛝 Bolalar zonasi: 1 soat — 80 000 so‘m; 2 soat — 90 000 so‘m; "
+                "cheksiz — 100 000 so‘m.\n\n"
+                "🤸 Batut zonasi: 1 soat — 80 000 so‘m; 2 soat — 90 000 so‘m; "
+                "cheksiz — 100 000 so‘m.\n\n"
+                "🔥 Ikki zona — 120 000 so‘m, cheksiz!"
+            )
+        elif any(k in text for k in ["tug‘ilgan", "tugilgan", "bayram", "birthday"]):
+            answer = (
+                "🎂 TUG‘ILGAN KUN\n\n"
+                "Bayram bitta tanlangan zonada o‘tkaziladi: bolalar maydonchasi yoki batut zonasi.\n"
+                "💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\n"
+                "🎉 Bron qilish uchun «Tug‘ilgan kunni bron qilish» tugmasini bosing."
+            )
+        elif any(k in text for k in ["vaqt", "qachongacha", "ochiq", "dushanba"]):
+            answer = (
+                "🕐 FUNLANDIA ISH VAQTI\n\n"
+                "🗓 Har kuni: 10:00–22:00\n"
+                "🧹 Har dushanba — 14:00 gacha sanitariya kuni.\n"
+                "🎉 Sizni 14:00 dan 22:00 gacha kutamiz!"
+            )
+        elif any(k in text for k in ["manzil", "qayerda", "adres", "xarita"]):
+            answer = "📍 Manzil: Toshkent, Timurmaliq ko‘chasi, 3.\n🗺️ «Manzil» bo‘limida xarita mavjud."
+        elif any(k in text for k in ["batut", "trampolin"]):
+            answer = (
+                "🤸 BATUT ZONASI\n\n"
+                "Professional batutlar, tarzanka va 17 metrlik tepalik.\n"
+                "⚠️ Batut zonasiga 7 yoshdan boshlab va faqat ota-ona yoki katta yoshli hamroh nazoratida."
+            )
+        elif any(k in text for k in ["yosh", "bola", "bolalar"]):
+            answer = (
+                "👧👦 1 yoshdan 16 yoshgacha bo‘lgan bolalar uchun kirish pullik.\n"
+                "⚠️ Batut zonasiga 7 yoshdan boshlab va kattalar nazoratida."
+            )
+        else:
+            answer = (
+                "👋 Assalomu alaykum! Savolingizni yozing.\n\n"
+                "Masalan: «Narxlar qancha?», «Tug‘ilgan kun», «Ish vaqti?», «Manzil qayerda?»"
+            )
+    else:
+        if any(k in text for k in ["цена", "цены", "сколько", "стоимость", "сум"]):
+            answer = (
+                "🎟️ ЦЕНЫ FUNLANDIA\n\n"
+                "🛝 Детская зона: 1 час — 80 000 сум; 2 часа — 90 000 сум; "
+                "безлимит — 100 000 сум.\n\n"
+                "🤸 Батутная зона: 1 час — 80 000 сум; 2 часа — 90 000 сум; "
+                "безлимит — 100 000 сум.\n\n"
+                "🔥 Две зоны — 120 000 сум, безлимит!"
+            )
+        elif any(k in text for k in ["день рождения", "день рожд", "праздник", "именинник"]):
+            answer = (
+                "🎂 ДЕНЬ РОЖДЕНИЯ\n\n"
+                "Празднование проходит в одной выбранной зоне: детская площадка или батутная зона.\n"
+                "💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\n"
+                "🎉 Для бронирования нажмите «Забронировать день рождения»."
+            )
+        elif any(k in text for k in ["время", "работаете", "открыты", "понедельник"]):
+            answer = (
+                "🕐 ВРЕМЯ РАБОТЫ FUNLANDIA\n\n"
+                "🗓 Каждый день: 10:00–22:00\n"
+                "🧹 Каждый понедельник — санитарный день до 14:00.\n"
+                "🎉 Ждём вас с 14:00 до 22:00!"
+            )
+        elif any(k in text for k in ["адрес", "где вы", "где находитесь", "карта"]):
+            answer = "📍 Адрес: Ташкент, ул. Тимур Малика, 3.\n🗺️ В разделе «Адрес» есть кнопка «Открыть на карте»."
+        elif any(k in text for k in ["батут", "трамплин"]):
+            answer = (
+                "🤸 БАТУТНАЯ ЗОНА\n\n"
+                "Профессиональные батуты, тарзанка и 17-метровая горка.\n"
+                "⚠️ На батутную зону допускаются дети от 7 лет и только под присмотром родителей или сопровождающего взрослого."
+            )
+        elif any(k in text for k in ["возраст", "лет", "ребенок", "дети"]):
+            answer = (
+                "👧👦 Детям от 1 года до 16 лет — вход платный.\n"
+                "⚠️ На батутную зону допускаются дети от 7 лет и только под присмотром взрослых."
+            )
+        else:
+            answer = (
+                "👋 Здравствуйте! Напишите ваш вопрос.\n\n"
+                "Например: «Сколько стоит?», «Хочу день рождения», "
+                "«Время работы?», «Где вы находитесь?»"
+            )
+
+    await update.message.reply_text(answer, reply_markup=menu(lang))
+
+async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+    lang = context.user_data.get("lang", "ru")
+
+    if text in ("🇺🇿 O‘zbekcha", "UZ O‘zbekcha"):
+        return await uz_start(update, context)
+    if text == "🇷🇺 Русский":
+        return await start(update, context)
+
+    # Contact buttons: one contact and one call-center button.
+    if text in ("📞 Контакт", "📞 Kontakt", "📞 Контакты", "📞 Aloqa"):
+        return await contacts(update, lang)
+    if text in ("☎️ Колл-центр", "☎️ Call-markaz"):
+        return await direct_contact(update, lang, "call")
+
+    if text in ("🎟️ Цены", "🎟️ Narxlar"):
+        return await prices(update, lang)
+    if text in ("🎂 День рождения", "🎂 Tug‘ilgan kun", "🎉 Забронировать день рождения", "🎉 Tug‘ilgan kunni bron qilish"):
+        return await birthday(update, context)
+    if text in ("🎠 Развлечения", "🎠 Ko‘ngilochar"):
+        return await attractions(update, lang)
+    if text in ("📍 Адрес", "📍 Manzil"):
+        return await simple(update, lang, "address")
+    if text in ("🕐 Время работы", "🕐 Ish vaqti"):
+        return await hours(update, lang)
+    if text == "📸 Instagram":
+        return await simple(update, lang, "instagram")
+    if text == "📱 Telegram":
+        return await simple(update, lang, "telegram")
+
+
+    if context.user_data.get("birthday_step"):
+        if context.user_data.get("birthday_step") == 6:
+            return await finish_birthday(update, context)
+        return await birthday_form(update, context)
+
+    known_buttons = {
+        "🎟️ Цены", "🎂 День рождения", "🎉 Забронировать день рождения",
+        "🎠 Развлечения", "📍 Адрес", "🕐 Время работы",
+        "📞 Контакт", "☎️ Колл-центр", "📸 Instagram", "📱 Telegram",
+        "🎟️ Narxlar", "🎂 Tug‘ilgan kun", "🎉 Tug‘ilgan kunni bron qilish",
+        "🎠 Ko‘ngilochar", "📍 Manzil", "🕐 Ish vaqti", "📞 Kontakt",
+        "☎️ Call-markaz", "📸 Instagram", "📱 Telegram"
+    }
+    if text not in known_buttons:
+        return await auto_answer(update, context)
+
+
+def main():
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN is not set")
+    app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
