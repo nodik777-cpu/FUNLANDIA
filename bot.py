@@ -70,7 +70,6 @@ def menu(lang="ru"):
     if lang == "uz":
         return ReplyKeyboardMarkup([
             ["🎡 FUNLANDIA", "🎟️ Narxlar"],
-            ["🎂 Tug‘ilgan kun"],
             ["🎠 Ko‘ngilochar", "📍 Manzil"],
             ["🎉 Tug‘ilgan kunni bron qilish"],
             ["🕐 Ish vaqti", "📞 Kontakt"],
@@ -79,7 +78,6 @@ def menu(lang="ru"):
         ], resize_keyboard=True)
     return ReplyKeyboardMarkup([
         ["🎡 FUNLANDIA", "🎟️ Цены"],
-        ["🎂 День рождения"],
         ["🎠 Развлечения", "📍 Адрес"],
         ["🎉 Забронировать день рождения"],
         ["🕐 Время работы", "📞 Контакт"],
@@ -109,13 +107,13 @@ def birthday_menu(lang="ru"):
         return ReplyKeyboardMarkup([
             ["🎈 Zona №1", "🎈 Zona №2"],
             ["🎈 Zona №3"],
-            ["🎉 Tug‘ilgan kunni bron qilish"],
+            ["📝 Tug‘ilgan kunni bron qilish"],
             ["🔙 Orqaga"],
         ], resize_keyboard=True)
     return ReplyKeyboardMarkup([
         ["🎈 Зона №1", "🎈 Зона №2"],
         ["🎈 Зона №3"],
-        ["🎉 Забронировать день рождения"],
+        ["📝 Забронировать день рождения"],
         ["🔙 Назад"],
     ], resize_keyboard=True)
 
@@ -298,9 +296,11 @@ async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def birthday_gallery(update: Update, lang):
     text = (
-        "🎂 Tug‘ilgan kun zonalari\n\nSuratni tanlang:"
+        "🎂 TUG‘ILGAN KUN FUNLANDIA'DA\n\n"
+        "🎈 Bayram zonasi fotosuratini tanlang yoki bron qiling:"
         if lang == "uz" else
-        "🎂 Зоны для дня рождения\n\nВыберите зону:"
+        "🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA\n\n"
+        "🎈 Выберите зону, чтобы посмотреть фотографии, или сразу оформите бронь:"
     )
     await update.message.reply_text(text, reply_markup=birthday_menu(lang))
 
@@ -459,6 +459,8 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in ("🎂 День рождения", "🎂 Tug‘ilgan kun"):
         return await birthday_gallery(update, lang)
     if text in ("🎉 Забронировать день рождения", "🎉 Tug‘ilgan kunni bron qilish"):
+        return await birthday_gallery(update, lang)
+    if text in ("📝 Забронировать день рождения", "📝 Tug‘ilgan kunni bron qilish"):
         return await birthday(update, context)
     if text in ("🎠 Развлечения", "🎠 Ko‘ngilochar"):
         return await attractions(update, lang)
