@@ -270,7 +270,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await hours(update, lang)
 
     if any(word in question for word in address_words):
-        return await simple(update, lang, "address")
+        return await simple(update, "address", lang)
 
     if any(word in question for word in contact_words):
         return await contacts(update, lang)
@@ -904,53 +904,67 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 async def business_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle Telegram Business connection updates."""
-    connection = update.business_connection
+    connection = getattr(update, "business_connection", None)
     if not connection:
         return
 
-    if is_admin(update):
+    if is_admin(update) and ADMIN_CHAT_ID:
         rights = getattr(connection, "rights", None)
-        can_reply = getattr(rights, "can_reply", None)
+        can_reply = getattr(rights, "can_reply", False)
         status = "разрешены" if can_reply else "не подтверждены"
-        await context.bot.send_message(
-            chat_id=ADMIN_CHAT_ID,
-            text=(
-                "🔗 Telegram Business подключён.\n"
-                f"Ответы от имени аккаунта: {status}"
-            ),
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_CHAT_ID,
+                text=(
+                    "🔗 Telegram Business подключён.\n"
+                    f"Ответы от имени аккаунта: {status}"
+                ),
+            )
+        except Exception as exc:
+            print(f"Business connection notification error: {exc}")
 
 
 async def business_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Every incoming Business message gets the same short redirect."""
+    """Every incoming Telegram Business message gets the same short redirect."""
     message = update.effective_message
     if not message:
         return
 
     keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🎉 ОТКРЫТЬ FUNLANDIA", url="https://t.me/Funlandiauzbot")
+        InlineKeyboardButton(
+            "🎉 ОТКРЫТЬ FUNLANDIA",
+            url="https://t.me/Funlandiauzbot",
+        )
     ]])
 
-    await message.reply_text(
-        "👇 Для полной информации перейдите в наш бот",
-        reply_markup=keyboard,
-    )
+    try:
+        await message.reply_text(
+            "👇 Для полной информации перейдите в наш бот",
+            reply_markup=keyboard,
+        )
+    except Exception as exc:
+        print(f"Business redirect error: {exc}")
+
 
 def main():
     if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN не задан в Railway Variables.")
+        raise RuntimeError("BOT_TOKEN is not set")
 
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Admin/photo management commands
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setphoto", setphoto))
     app.add_handler(CommandHandler("setpromo", setpromo))
     app.add_handler(CommandHandler("donephoto", donephoto))
-    app.add_handler(CommandHandler("deletephoto", deletephoto))
-    app.add_handler(CommandHandler("clearphotos", clearphotos))
 
-    # Telegram Business
+    # Telegram Business / Secretary Mode.
+    # Telegram sends a BusinessConnection update when the account is connected.
     app.add_handler(BusinessConnectionHandler(business_connection))
+
+    # Telegram Business / Secretary Mode.
+    # Messages arriving through a connected Business account are delivered
+    # as BUSINESS_MESSAGE updates. We route them through the same handler
+    # so the existing auto-secretary can answer clients on behalf of FUNLANDIA.
     app.add_handler(
         MessageHandler(
             filters.UpdateType.BUSINESS_MESSAGE,
@@ -958,17 +972,13 @@ def main():
         )
     )
 
-    # Main bot
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("language", start))
+    # Normal bot chats.
     app.add_handler(MessageHandler(filters.PHOTO, receive_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
-
     app.add_error_handler(error_handler)
 
-    print("FUNLANDIA bot started.")
+    # Explicitly receive Business Connection and Business Message updates.
     app.run_polling(allowed_updates=Update.ALL_TYPES)
-
 
 if __name__ == "__main__":
     main()
