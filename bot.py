@@ -1,7 +1,7 @@
 import os
 import json
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, BusinessConnectionHandler, filters
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
@@ -127,7 +127,7 @@ def birthday_menu(lang="ru"):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data["lang"] = "ru"
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA! 🎉\n\n"
         "Место, где дети играют, веселятся и получают яркие эмоции, "
         "а родители отдыхают! ❤️\n\n"
@@ -139,7 +139,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data["lang"] = "uz"
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "🎉 FUNLANDIA'GA XUSH KELIBSIZ! 🎉\n\n"
         "Bu yerda bolalar o‘ynaydi, quvonadi va yorqin taassurotlar oladi, "
         "ota-onalar esa maroqli dam oladi! ❤️\n\n"
@@ -173,12 +173,12 @@ async def secretary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📱 Telegram\n\n"
         "Напишите свой вопрос — я постараюсь сразу ответить."
     )
-    await update.message.reply_text(text, reply_markup=menu(lang))
+    await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 
 async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "ru")
-    question = (update.message.text or "").strip().lower()
+    question = (update.effective_message.text or "").strip().lower()
 
     price_words = ("цен", "стоим", "сколько", "price", "narx", "so'm", "сум")
     birthday_words = ("день рождения", "день рожд", "birthday", "tug‘ilgan", "tugilgan", "брон", "забронировать")
@@ -207,7 +207,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👧 От 1 года до 16 лет — вход платный.\n"
             "🎉 Дети должны соблюдать правила безопасности."
         )
-        return await update.message.reply_text(text, reply_markup=menu(lang))
+        return await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
     if any(word in question for word in trampoline_age_words):
         text = (
@@ -219,7 +219,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👧 На батутную зону допускаются дети от 7 лет.\n"
             "👨‍👩‍👧 Ребёнок должен находиться под присмотром родителей или сопровождающего взрослого."
         )
-        return await update.message.reply_text(text, reply_markup=menu(lang))
+        return await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
     if any(word in question for word in age_general_words):
         text = (
@@ -231,7 +231,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🛝 От 1 года до 16 лет — вход на детскую площадку платный.\n"
             "🤸 Батутная зона — с 7 лет и под присмотром родителей или сопровождающего взрослого."
         )
-        return await update.message.reply_text(text, reply_markup=menu(lang))
+        return await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
     if any(word in question for word in birthday_words):
         return await birthday_gallery(update, lang)
@@ -244,7 +244,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🧹 Каждый понедельник — санитарный день до 14:00.\n"
             "🎉 Ждём вас с 14:00 до 22:00."
         )
-        return await update.message.reply_text(text, reply_markup=menu(lang))
+        return await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
     if any(word in question for word in hours_words):
         return await hours(update, lang)
@@ -264,7 +264,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Клиент: {display_name}\n"
         f"Telegram: {user_ref}\n"
         f"Язык: {'UZ' if lang == 'uz' else 'RU'}\n\n"
-        f"Вопрос:\n{update.message.text}"
+        f"Вопрос:\n{update.effective_message.text}"
     )
 
     if ADMIN_CHAT_ID:
@@ -273,7 +273,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as exc:
             print(f"Admin notification error: {exc}")
 
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "Savolingizni administratorga yubordim. Tez orada siz bilan bog‘lanishadi."
         if lang == "uz" else
         "Я передал ваш вопрос администратору FUNLANDIA. Вам ответят в ближайшее время.",
@@ -322,7 +322,7 @@ async def prices(update: Update, lang):
             "♾️ Безлимитное посещение обеих зон!\n\n"
             "🎊 ИГРАЙ • ВЕСЕЛИСЬ • ПОЛУЧАЙ ЭМОЦИИ В FUNLANDIA!"
         )
-    await update.message.reply_text(text, reply_markup=menu(lang))
+    await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 async def hours(update: Update, lang):
     text = (
@@ -336,7 +336,7 @@ async def hours(update: Update, lang):
         "🧹 Har dushanba — 14:00 gacha sanitariya kuni.\n"
         "🎉 Sizni 14:00 dan 22:00 gacha kutamiz!"
     )
-    await update.message.reply_text(text, reply_markup=menu(lang))
+    await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 async def contacts(update: Update, lang):
     if lang == "uz":
@@ -355,7 +355,7 @@ async def contacts(update: Update, lang):
             "📱 Telegram: @Funlandia_Tashkent\n"
             "📸 Instagram: @funlandiauz"
         )
-    await update.message.reply_text(text, reply_markup=menu(lang))
+    await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 async def direct_contact(update: Update, lang, kind):
     if kind == "call":
@@ -370,7 +370,7 @@ async def direct_contact(update: Update, lang, kind):
             if lang == "uz" else
             "📞 КОНТАКТ\n\n📞 +998933810055"
         )
-    await update.message.reply_text(text, reply_markup=menu(lang))
+    await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 async def simple(update: Update, lang, kind):
     if kind == "address":
@@ -381,13 +381,13 @@ async def simple(update: Update, lang, kind):
                 url="https://yandex.uz/maps/-/CTT~uR0N"
             )
         ]])
-        await update.message.reply_text(text, reply_markup=map_button)
+        await update.effective_message.reply_text(text, reply_markup=map_button)
         return
     if kind == "instagram":
         text = f"📸 Instagram FUNLANDIA\n\n{INSTAGRAM}"
     else:
         text = f"📱 Telegram FUNLANDIA\n\n{TELEGRAM}"
-    await update.message.reply_text(text, reply_markup=menu(lang))
+    await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 async def attractions(update: Update, lang):
     text = (
@@ -401,11 +401,11 @@ async def attractions(update: Update, lang):
         "🎢 Горки\n🛝 17-метровая горка\n🧗 Тарзанка\n🎯 Пневмопушки\n"
         "🧸 Зона для малышей\n🏖️ Кинетический песок\n🎠 Карусели"
     )
-    await update.message.reply_text(text, reply_markup=menu(lang))
+    await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 async def funlandia(update: Update, lang):
     text = "🎡 FUNLANDIA\n\nTanlang:" if lang == "uz" else "🎡 FUNLANDIA\n\nВыберите раздел:"
-    await update.message.reply_text(text, reply_markup=funlandia_menu(lang))
+    await update.effective_message.reply_text(text, reply_markup=funlandia_menu(lang))
 
 async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "ru")
@@ -432,7 +432,7 @@ async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\n\n"
         "Чтобы оставить заявку, напишите имя именинника:"
     )
-    await update.message.reply_text(text, reply_markup=menu(lang))
+    await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 async def september_promo(update: Update, context: ContextTypes.DEFAULT_TYPE, lang):
     key = "promotion"
@@ -442,7 +442,7 @@ async def september_promo(update: Update, context: ContextTypes.DEFAULT_TYPE, la
     if file_ids:
         title = "🎁 АКЦИЯ МЕСЯЦА" if lang == "ru" else "🎁 OY AKSIYASI"
         for index, file_id in enumerate(file_ids):
-            await update.message.reply_photo(
+            await update.effective_message.reply_photo(
                 photo=file_id,
                 caption=title if index == 0 else None,
                 reply_markup=menu(lang) if index == len(file_ids) - 1 else None
@@ -455,7 +455,7 @@ async def september_promo(update: Update, context: ContextTypes.DEFAULT_TYPE, la
             "🎁 OY AKSIYASI\n\n"
             "Aksiya fotosuratlari hali yuklanmagan."
         )
-        await update.message.reply_text(text, reply_markup=menu(lang))
+        await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 
 async def birthday_gallery(update: Update, lang):
@@ -466,7 +466,7 @@ async def birthday_gallery(update: Update, lang):
         "🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA\n\n"
         "🎈 Выберите зону, чтобы посмотреть фотографии, или сразу оформите бронь:"
     )
-    await update.message.reply_text(text, reply_markup=birthday_menu(lang))
+    await update.effective_message.reply_text(text, reply_markup=birthday_menu(lang))
 
 async def send_photo_key(update: Update, context: ContextTypes.DEFAULT_TYPE, key):
     lang = context.user_data.get("lang", "ru")
@@ -474,7 +474,7 @@ async def send_photo_key(update: Update, context: ContextTypes.DEFAULT_TYPE, key
     file_ids = normalize_photo_list(photos.get(key))
     title = PHOTO_TITLES_UZ.get(key, key) if lang == "uz" else PHOTO_KEYS.get(key, key)
     if not file_ids:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"📸 {title}\n\nФото пока не подключено. Администратор добавит его после загрузки."
             if lang == "uz" else
             f"📸 {title}\n\nФото пока не подключено. Мы добавим его на следующем этапе.",
@@ -483,7 +483,7 @@ async def send_photo_key(update: Update, context: ContextTypes.DEFAULT_TYPE, key
         return
     reply_markup = funlandia_menu(lang) if key not in ("birthday1", "birthday2", "birthday3") else birthday_menu(lang)
     for index, file_id in enumerate(file_ids):
-        await update.message.reply_photo(
+        await update.effective_message.reply_photo(
             photo=file_id,
             caption=title if index == 0 else None,
             reply_markup=reply_markup if index == len(file_ids) - 1 else None
@@ -495,7 +495,7 @@ async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args or args[0] not in PHOTO_KEYS:
         keys = "\n".join(f"/setphoto {k}" for k in PHOTO_KEYS)
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "Использование:\n"
             "/setphoto entrance\n\n"
             "После этого отправляйте сколько угодно фотографий подряд.\n"
@@ -512,14 +512,14 @@ async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photos["promotion"] = []
         save_photos(photos)
         context.user_data["promotion_new"] = True
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             "📸 Раздел: 🎁 Акция месяца\n\n"
             "Старая акция очищена.\n\n"
             "Теперь отправьте 2 новые фотографии акции подряд.\n"
             "После второй фотографии отправьте /donephoto."
         )
     else:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"📸 Раздел: {PHOTO_KEYS[key]}\n\n"
             f"Уже сохранено: {count} фото.\n\n"
             "Теперь отправляйте фотографии подряд — 2, 5, 10 и больше.\n"
@@ -537,7 +537,7 @@ async def setpromo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photos["promotion"] = []
     save_photos(photos)
 
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "📸 АКЦИЯ МЕСЯЦА\n\n"
         "Старая акция очищена.\n\n"
         "Теперь отправьте 2 новые фотографии подряд.\n"
@@ -550,11 +550,11 @@ async def donephoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     key = context.user_data.pop("setting_photo", None)
     if not key:
-        await update.message.reply_text("ℹ️ Сейчас нет активной загрузки фотографий.")
+        await update.effective_message.reply_text("ℹ️ Сейчас нет активной загрузки фотографий.")
         return
     photos = load_photos()
     count = len(normalize_photo_list(photos.get(key)))
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"✅ Готово! Для «{PHOTO_KEYS[key]}» сохранено: {count} фото.\n\n"
         "Теперь можно выбрать следующий раздел через /setphoto key."
     )
@@ -565,13 +565,13 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     key = context.user_data.get("setting_photo")
     if not key:
         return
-    photo = update.message.photo[-1]
+    photo = update.effective_message.photo[-1]
     photos = load_photos()
     file_ids = normalize_photo_list(photos.get(key))
     file_ids.append(photo.file_id)
     photos[key] = file_ids
     save_photos(photos)
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"✅ Фото №{len(file_ids)} сохранено для: {PHOTO_KEYS[key]}\n"
         "Можешь отправить следующее фото. Когда закончишь — /donephoto"
     )
@@ -579,7 +579,7 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def birthday_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "ru")
     step = context.user_data["birthday_step"]
-    value = update.message.text.strip()
+    value = update.effective_message.text.strip()
     data = context.user_data["birthday"]
     prompts = (
         [
@@ -600,15 +600,15 @@ async def birthday_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data[key] = value
     if step < 5:
         context.user_data["birthday_step"] = step + 1
-        await update.message.reply_text(prompt)
+        await update.effective_message.reply_text(prompt)
     else:
         context.user_data["birthday_step"] = 6
-        await update.message.reply_text(prompt)
+        await update.effective_message.reply_text(prompt)
 
 async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "ru")
     data = context.user_data["birthday"]
-    data["seat_zone"] = update.message.text.strip()
+    data["seat_zone"] = update.effective_message.text.strip()
     username = update.effective_user.username or "нет username"
     msg = (
         "🎂 НОВАЯ ЗАЯВКА FUNLANDIA\n\n"
@@ -621,7 +621,7 @@ async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
     context.user_data.clear()
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         "✅ Arizangiz qabul qilindi!\nAdministrator FUNLANDIA siz bilan bog‘lanadi."
         if lang == "uz" else
         "✅ Заявка принята!\n\n💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\nАдминистратор FUNLANDIA свяжется с вами.",
@@ -629,7 +629,7 @@ async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
+    text = (update.effective_message.text or "").strip()
     lang = context.user_data.get("lang", "ru")
 
     if text in ("🇺🇿 O‘zbekcha", "UZ O‘zbekcha"):
@@ -640,7 +640,7 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in ("🔙 Назад", "🔙 Orqaga"):
         context.user_data.pop("birthday_step", None)
         context.user_data.pop("birthday", None)
-        return await update.message.reply_text(
+        return await update.effective_message.reply_text(
             "Главное меню:" if lang == "ru" else "Asosiy menyu:",
             reply_markup=menu(lang)
         )
@@ -713,6 +713,37 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     # Keep the bot running even if one user message causes an exception.
     print(f"Bot error: {context.error}")
 
+async def business_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle Telegram Business connection/disconnection events."""
+    connection = update.business_connection
+    if not connection:
+        return
+
+    status = "ПОДКЛЮЧЕН" if connection.is_enabled else "ОТКЛЮЧЕН"
+    rights = connection.rights
+    can_reply = getattr(rights, "can_reply", None) if rights else None
+
+    print(
+        f"Telegram Business: {status}; "
+        f"connection_id={connection.id}; "
+        f"business_user_id={connection.user.id}; "
+        f"can_reply={can_reply}"
+    )
+
+    # Notify the administrator when the Business connection changes.
+    if ADMIN_CHAT_ID:
+        try:
+            text = (
+                "🤖 TELEGRAM BUSINESS\n\n"
+                f"Статус: {status}\n"
+                f"Ответы от имени аккаунта: "
+                f"{'разрешены' if can_reply else 'не подтверждены'}"
+            )
+            await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=text)
+        except Exception as exc:
+            print(f"Business admin notification error: {exc}")
+
+
 def main():
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN is not set")
@@ -723,6 +754,10 @@ def main():
     app.add_handler(CommandHandler("setphoto", setphoto))
     app.add_handler(CommandHandler("setpromo", setpromo))
     app.add_handler(CommandHandler("donephoto", donephoto))
+
+    # Telegram Business / Secretary Mode.
+    # Telegram sends a BusinessConnection update when the account is connected.
+    app.add_handler(BusinessConnectionHandler(business_connection))
 
     # Telegram Business / Secretary Mode.
     # Messages arriving through a connected Business account are delivered
@@ -746,7 +781,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
     app.add_error_handler(error_handler)
 
-    app.run_polling()
+    # Explicitly receive Business Connection and Business Message updates.
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
