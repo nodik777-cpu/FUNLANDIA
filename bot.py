@@ -14,9 +14,7 @@ TELEGRAM = "https://t.me/Funlandia_Tashkent"
 
 # Photos are saved as Telegram file_id values in photos.json.
 # This lets Railway send the same photos without hosting image files.
-PHOTO_DIR = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "/app/data")
-os.makedirs(PHOTO_DIR, exist_ok=True)
-PHOTO_FILE = os.path.join(PHOTO_DIR, "photos.json")
+PHOTO_FILE = "photos.json"
 
 PHOTO_KEYS = {
     "entrance": "🚪 Вход в FUNLANDIA",
