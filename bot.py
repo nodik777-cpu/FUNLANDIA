@@ -936,6 +936,38 @@ async def business_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=keyboard,
     )
 
+def main():
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN не задан в Railway Variables.")
+
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    # Admin/photo management commands
+    app.add_handler(CommandHandler("setphoto", setphoto))
+    app.add_handler(CommandHandler("setpromo", setpromo))
+    app.add_handler(CommandHandler("donephoto", donephoto))
+    app.add_handler(CommandHandler("deletephoto", deletephoto))
+    app.add_handler(CommandHandler("clearphotos", clearphotos))
+
+    # Telegram Business
+    app.add_handler(BusinessConnectionHandler(business_connection))
+    app.add_handler(
+        MessageHandler(
+            filters.UpdateType.BUSINESS_MESSAGE,
+            business_redirect,
+        )
+    )
+
+    # Main bot
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("language", start))
+    app.add_handler(MessageHandler(filters.PHOTO, receive_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
+
+    app.add_error_handler(error_handler)
+
+    print("FUNLANDIA bot started.")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
