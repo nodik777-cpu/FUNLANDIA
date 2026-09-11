@@ -124,6 +124,16 @@ def birthday_menu(lang="ru"):
         ["🔙 Назад"],
     ], resize_keyboard=True)
 
+
+def two_col(rows):
+    out = []
+    for row in rows:
+        if not isinstance(row, list):
+            row = [row]
+        for i in range(0, len(row), 2):
+            out.append(row[i:i+2])
+    return out
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data["lang"] = "ru"
@@ -260,7 +270,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await hours(update, lang)
 
     if any(word in question for word in address_words):
-        return await simple(update, "address", lang)
+        return await simple(update, lang, "address")
 
     if any(word in question for word in contact_words):
         return await contacts(update, lang)
@@ -738,15 +748,9 @@ async def birthday_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Arizani administratorga yuborish uchun «Arizani tasdiqlash» tugmasini bosing."
     )
     keyboard = (
-        ReplyKeyboardMarkup(
-            [["✅ Подтвердить заявку", "✏️ Изменить"], ["🔙 Назад"]],
-            resize_keyboard=True
-        )
+        ReplyKeyboardMarkup(two_col([["✅ Подтвердить заявку", "✏️ Изменить"], ["🔙 Назад"]]), resize_keyboard=True)
         if lang == "ru" else
-        ReplyKeyboardMarkup(
-            [["✅ Arizani tasdiqlash", "✏️ O‘zgartirish"], ["🔙 Orqaga"]],
-            resize_keyboard=True
-        )
+        ReplyKeyboardMarkup(two_col([["✅ Arizani tasdiqlash", "✏️ O‘zgartirish"], ["🔙 Orqaga"]]), resize_keyboard=True)
     )
     await update.effective_message.reply_text(summary, reply_markup=keyboard)
 
@@ -899,75 +903,40 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print(f"Bot error: {context.error}")
 
 async def business_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle Telegram Business connection/disconnection events."""
+    """Handle Telegram Business connection updates."""
     connection = update.business_connection
     if not connection:
         return
 
-    status = "ПОДКЛЮЧЕН" if connection.is_enabled else "ОТКЛЮЧЕН"
-    rights = connection.rights
-    can_reply = getattr(rights, "can_reply", None) if rights else None
-
-    print(
-        f"Telegram Business: {status}; "
-        f"connection_id={connection.id}; "
-        f"business_user_id={connection.user.id}; "
-        f"can_reply={can_reply}"
-    )
-
-    # Notify the administrator when the Business connection changes.
-    if ADMIN_CHAT_ID:
-        try:
-            text = (
-                "🤖 TELEGRAM BUSINESS\n\n"
-                f"Статус: {status}\n"
-                f"Ответы от имени аккаунта: "
-                f"{'разрешены' if can_reply else 'не подтверждены'}"
-            )
-            await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=text)
-        except Exception as exc:
-            print(f"Business admin notification error: {exc}")
-
-
-def main():
-    if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN is not set")
-
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("setphoto", setphoto))
-    app.add_handler(CommandHandler("setpromo", setpromo))
-    app.add_handler(CommandHandler("donephoto", donephoto))
-
-    # Telegram Business / Secretary Mode.
-    # Telegram sends a BusinessConnection update when the account is connected.
-    app.add_handler(BusinessConnectionHandler(business_connection))
-
-    # Telegram Business / Secretary Mode.
-    # Messages arriving through a connected Business account are delivered
-    # as BUSINESS_MESSAGE updates. We route them through the same handler
-    # so the existing auto-secretary can answer clients on behalf of FUNLANDIA.
-    app.add_handler(
-        MessageHandler(
-            filters.UpdateType.BUSINESS_MESSAGE & filters.PHOTO,
-            receive_photo,
+    if is_admin(update):
+        rights = getattr(connection, "rights", None)
+        can_reply = getattr(rights, "can_reply", None)
+        status = "разрешены" if can_reply else "не подтверждены"
+        await context.bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=(
+                "🔗 Telegram Business подключён.\n"
+                f"Ответы от имени аккаунта: {status}"
+            ),
         )
-    )
-    app.add_handler(
-        MessageHandler(
-            filters.UpdateType.BUSINESS_MESSAGE & filters.TEXT,
-            handler,
-        )
+
+
+async def business_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Every incoming Business message gets the same short redirect."""
+    message = update.effective_message
+    if not message:
+        return
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🎉 ОТКРЫТЬ FUNLANDIA", url="https://t.me/Funlandiauzbot")
+    ]])
+
+    await message.reply_text(
+        "👇 Для полной информации перейдите в наш бот",
+        reply_markup=keyboard,
     )
 
-    # Normal bot chats.
-    app.add_handler(MessageHandler(filters.PHOTO, receive_photo))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
-    app.add_error_handler(error_handler)
 
-    # Explicitly receive Business Connection and Business Message updates.
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
