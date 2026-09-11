@@ -354,6 +354,79 @@ async def send_photo_key(update: Update, context: ContextTypes.DEFAULT_TYPE, key
             reply_markup=reply_markup if index == len(file_ids) - 1 else None
         )
 
+async def deletephoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        return
+
+    args = context.args
+    if len(args) != 2:
+        await update.message.reply_text(
+            "Использование:\n"
+            "/deletephoto playground 1\n\n"
+            "Удаляет указанное фото из выбранного раздела."
+        )
+        return
+
+    key = args[0]
+    try:
+        index = int(args[1])
+    except ValueError:
+        await update.message.reply_text("Номер фото должен быть числом: 1, 2, 3...")
+        return
+
+    if key not in PHOTO_KEYS:
+        await update.message.reply_text(
+            "Неизвестный раздел.\n\nДоступные ключи:\n" +
+            "\n".join(f"/deletephoto {k} 1" for k in PHOTO_KEYS)
+        )
+        return
+
+    photos = load_photos()
+    file_ids = normalize_photo_list(photos.get(key))
+
+    if index < 1 or index > len(file_ids):
+        await update.message.reply_text(
+            f"Для «{PHOTO_KEYS[key]}» сейчас сохранено {len(file_ids)} фото."
+        )
+        return
+
+    file_ids.pop(index - 1)
+    photos[key] = file_ids
+    save_photos(photos)
+
+    await update.message.reply_text(
+        f"🗑️ Фото №{index} удалено из «{PHOTO_KEYS[key]}».\n"
+        f"Осталось фото: {len(file_ids)}."
+    )
+
+
+async def clearphotos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        return
+
+    args = context.args
+    if len(args) != 1 or args[0] not in PHOTO_KEYS:
+        await update.message.reply_text(
+            "Использование:\n"
+            "/clearphotos playground\n\n"
+            "Удаляет ВСЕ фото только из выбранного раздела.\n\n"
+            "Доступные разделы:\n" +
+            "\n".join(f"/clearphotos {k}" for k in PHOTO_KEYS)
+        )
+        return
+
+    key = args[0]
+    photos = load_photos()
+    old_count = len(normalize_photo_list(photos.get(key)))
+    photos[key] = []
+    save_photos(photos)
+
+    await update.message.reply_text(
+        f"🗑️ Раздел «{PHOTO_KEYS[key]}» очищен.\n"
+        f"Удалено фото: {old_count}."
+    )
+
+
 async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         return
@@ -588,6 +661,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setphoto", setphoto))
     app.add_handler(CommandHandler("setpromo", setpromo))
+    app.add_handler(CommandHandler("deletephoto", deletephoto))
+    app.add_handler(CommandHandler("clearphotos", clearphotos))
     app.add_handler(CommandHandler("donephoto", donephoto))
     app.add_handler(MessageHandler(filters.PHOTO, receive_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
