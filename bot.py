@@ -459,14 +459,54 @@ async def september_promo(update: Update, context: ContextTypes.DEFAULT_TYPE, la
 
 
 async def birthday_gallery(update: Update, lang):
-    text = (
-        "🎂 TUG‘ILGAN KUN FUNLANDIA'DA\n\n"
-        "🎈 Bayram zonasi fotosuratini tanlang yoki bron qiling:"
+    """Show birthday-zone photos first, then the zone/booking buttons."""
+    intro = (
+        "🎂 TUG‘ILГАН KUN FUNLANDIA'DA\n\n"
+        "🎈 Bayram zonalari fotosuratlari:"
         if lang == "uz" else
         "🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA\n\n"
-        "🎈 Выберите зону, чтобы посмотреть фотографии, или сразу оформите бронь:"
+        "🎈 Фотографии зон для празднования:"
     )
-    await update.effective_message.reply_text(text, reply_markup=birthday_menu(lang))
+    await update.effective_message.reply_text(intro)
+
+    photos = load_photos()
+    zone_keys = (
+        ("birthday1", "🎈 Зона №1", "🎈 Zona №1"),
+        ("birthday2", "🎈 Зона №2", "🎈 Zona №2"),
+        ("birthday3", "🎈 Зона №3", "🎈 Zona №3"),
+    )
+
+    shown = 0
+    for key, title_ru, title_uz in zone_keys:
+        file_ids = normalize_photo_list(photos.get(key))
+        title = title_uz if lang == "uz" else title_ru
+
+        for index, file_id in enumerate(file_ids):
+            caption = title if index == 0 else None
+            await update.effective_message.reply_photo(
+                photo=file_id,
+                caption=caption
+            )
+            shown += 1
+
+    if shown == 0:
+        await update.effective_message.reply_text(
+            "📸 Фото зон пока не загружены. Ниже можно выбрать зону или оформить бронь."
+            if lang == "ru" else
+            "📸 Zona fotosuratlari hali yuklanmagan. Quyida zonani tanlashingiz yoki bron qilishingiz mumkin."
+        )
+    else:
+        await update.effective_message.reply_text(
+            "👇 Выберите нужную зону или сразу оформите бронирование:"
+            if lang == "ru" else
+            "👇 Kerakli zonani tanlang yoki bronni boshlang:"
+        )
+
+    # Keep the existing working zone buttons and booking button.
+    await update.effective_message.reply_text(
+        "👇",
+        reply_markup=birthday_menu(lang)
+    )
 
 async def send_photo_key(update: Update, context: ContextTypes.DEFAULT_TYPE, key):
     lang = context.user_data.get("lang", "ru")
