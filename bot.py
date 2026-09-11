@@ -12,9 +12,11 @@ ADDRESS = "Ташкент, ул. Тимур Малика, 3"
 INSTAGRAM = "https://www.instagram.com/funlandiauz/"
 TELEGRAM = "https://t.me/Funlandia_Tashkent"
 
-# Photos are saved as Telegram file_id values in photos.json.
-# This lets Railway send the same photos without hosting image files.
-PHOTO_FILE = "photos.json"
+# Photos are saved as Telegram file_id values in a persistent Railway Volume.
+# Railway Volume should be mounted at /app/data.
+PHOTO_DIR = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "/app/data")
+os.makedirs(PHOTO_DIR, exist_ok=True)
+PHOTO_FILE = os.path.join(PHOTO_DIR, "photos.json")
 
 PHOTO_KEYS = {
     "entrance": "🚪 Вход в FUNLANDIA",
@@ -70,7 +72,8 @@ def menu(lang="ru"):
     if lang == "uz":
         return ReplyKeyboardMarkup([
             ["🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA", "🎟️ Narxlar"],
-            ["🎠 Ko‘ngilochar", "📍 Manzil"],
+            ["🎁 Aksiya sentyabr", "🎠 Ko‘ngilochar"],
+            ["📍 Manzil"],
             ["🎉 Tug‘ilgan kunni bron qilish"],
             ["🕐 Ish vaqti", "📞 Kontakt"],
             ["📸 Instagram", "📱 Telegram"],
@@ -78,7 +81,8 @@ def menu(lang="ru"):
         ], resize_keyboard=True)
     return ReplyKeyboardMarkup([
         ["🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA", "🎟️ Цены"],
-        ["🎠 Развлечения", "📍 Адрес"],
+        ["🎁 Акция сентября", "🎠 Развлечения"],
+        ["📍 Адрес"],
         ["🎉 Забронировать день рождения"],
         ["🕐 Время работы", "📞 Контакт"],
         ["📸 Instagram", "📱 Telegram"],
@@ -294,6 +298,17 @@ async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text, reply_markup=menu(lang))
 
+async def september_promo(update: Update, lang):
+    text = (
+        "🎁 АКЦИЯ СЕНТЯБРЯ\n\n"
+        "Следите за условиями акции FUNLANDIA! 🎉"
+        if lang == "ru" else
+        "🎁 SENTYABR AKSIYASI\n\n"
+        "FUNLANDIA aksiyasi shartlarini kuzatib boring! 🎉"
+    )
+    await update.message.reply_text(text, reply_markup=menu(lang))
+
+
 async def birthday_gallery(update: Update, lang):
     text = (
         "🎂 TUG‘ILGAN KUN FUNLANDIA'DA\n\n"
@@ -453,6 +468,9 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text in ("🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA",):
         return await funlandia(update, lang)
+
+    if text in ("🎁 Акция сентября", "🎁 Aksiya sentyabr"):
+        return await september_promo(update, lang)
 
     if text in ("🎟️ Цены", "🎟️ Narxlar"):
         return await prices(update, lang)
