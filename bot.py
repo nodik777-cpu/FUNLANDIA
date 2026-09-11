@@ -71,59 +71,60 @@ def is_admin(update: Update):
 
 def menu(lang="ru"):
     if lang == "uz":
-        return ReplyKeyboardMarkup([
+        rows = [
             ["📸 FOTO-GID", "🎟️ Narxlar"],
             ["🤖 Avto-kotib", "🎁 Aksiya oyi"],
-            ["🎠 Ko‘ngilochar"],
-            ["📍 Manzil"],
-            ["🎉 Tug‘ilgan kunni bron qilish"],
-            ["🕐 Ish vaqti", "📞 Kontakt"],
-            ["📸 Instagram", "📱 Telegram"],
-            ["🇷🇺 Русский"],
-        ], resize_keyboard=True)
-    return ReplyKeyboardMarkup([
-        ["📸 ФОТО-ГИД", "🎟️ Цены"],
-        ["🤖 Авто-секретарь", "🎁 Акция месяца"],
-        ["🎠 Развлечения"],
-        ["📍 Адрес"],
-        ["🎉 Забронировать день рождения"],
-        ["🕐 Время работы", "📞 Контакт"],
-        ["📸 Instagram", "📱 Telegram"],
-        ["🇺🇿 O‘zbekcha"],
-    ], resize_keyboard=True)
+            ["🎠 Ko‘ngilochar", "📍 Manzil"],
+            ["🎉 Tug‘ilgan kunni bron qilish", "🕐 Ish vaqti"],
+            ["📞 Kontakt", "📸 Instagram"],
+            ["📱 Telegram", "🇷🇺 Русский"],
+        ]
+    else:
+        rows = [
+            ["📸 ФОТО-ГИД", "🎟️ Цены"],
+            ["🤖 Авто-секретарь", "🎁 Акция месяца"],
+            ["🎠 Развлечения", "📍 Адрес"],
+            ["🎉 Забронировать день рождения", "🕐 Время работы"],
+            ["📞 Контакт", "📸 Instagram"],
+            ["📱 Telegram", "🇺🇿 O‘zbekcha"],
+        ]
+    return ReplyKeyboardMarkup(two_col(rows), resize_keyboard=True)
+
 
 def funlandia_menu(lang="ru"):
     if lang == "uz":
-        return ReplyKeyboardMarkup([
+        rows = [
             ["🚪 FUNLANDIA kirish", "🎟️ Kassa"],
             ["🤸 Batutlar", "🛝 Bolalar maydonchasi"],
             ["🎠 Karusellar", "🎮 O'yin avtomatlari"],
             ["🏎️ Avtodrom", "🪢 Kanat yo‘li"],
             ["🔙 Orqaga"],
-        ], resize_keyboard=True)
-    return ReplyKeyboardMarkup([
-        ["🚪 Вход в FUNLANDIA", "🎟️ Касса"],
-        ["🤸 Батуты", "🛝 Детская площадка"],
-        ["🎠 Карусели", "🎮 Игровые автоматы"],
-        ["🏎️ Автодром", "🪢 Канатная дорога"],
-        ["🔙 Назад"],
-    ], resize_keyboard=True)
+        ]
+    else:
+        rows = [
+            ["🚪 Вход в FUNLANDIA", "🎟️ Касса"],
+            ["🤸 Батуты", "🛝 Детская площадка"],
+            ["🎠 Карусели", "🎮 Игровые автоматы"],
+            ["🏎️ Автодром", "🪢 Канатная дорога"],
+            ["🔙 Назад"],
+        ]
+    return ReplyKeyboardMarkup(two_col(rows), resize_keyboard=True)
+
 
 def birthday_menu(lang="ru"):
     if lang == "uz":
-        return ReplyKeyboardMarkup([
+        rows = [
             ["🎈 Zona №1", "🎈 Zona №2"],
-            ["🎈 Zona №3"],
-            ["📝 Tug‘ilgan kunni bron qilish"],
+            ["🎈 Zona №3", "📝 Tug‘ilgan kunni bron qilish"],
             ["🔙 Orqaga"],
-        ], resize_keyboard=True)
-    return ReplyKeyboardMarkup([
-        ["🎈 Зона №1", "🎈 Зона №2"],
-        ["🎈 Зона №3"],
-        ["📝 Забронировать день рождения"],
-        ["🔙 Назад"],
-    ], resize_keyboard=True)
-
+        ]
+    else:
+        rows = [
+            ["🎈 Зона №1", "🎈 Зона №2"],
+            ["🎈 Зона №3", "📝 Забронировать день рождения"],
+            ["🔙 Назад"],
+        ]
+    return ReplyKeyboardMarkup(two_col(rows), resize_keyboard=True)
 
 def two_col(rows):
     out = []
@@ -925,26 +926,73 @@ async def business_connection(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def business_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Every incoming Telegram Business message gets the same short redirect."""
+    """
+    Telegram Business secretary:
+    first incoming message of any kind -> greeting + language choice.
+    After language choice -> short localized redirect to the main bot.
+    """
     message = update.effective_message
     if not message:
         return
 
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton(
-            "🎉 ОТКРЫТЬ FUNLANDIA",
-            url="https://t.me/Funlandiauzbot",
-        )
-    ]])
+    text = (message.text or "").strip()
+    lang = context.user_data.get("business_lang")
 
-    try:
+    # Language selection buttons are ordinary reply-keyboard buttons.
+    if text in ("🇷🇺 Русский", "Русский", "RU"):
+        context.user_data["business_lang"] = "ru"
         await message.reply_text(
             "👇 Для полной информации перейдите в наш бот",
-            reply_markup=keyboard,
+            reply_markup=ReplyKeyboardMarkup(
+                [["🎉 ОТКРЫТЬ FUNLANDIA"]],
+                resize_keyboard=True,
+                one_time_keyboard=False,
+            ),
         )
-    except Exception as exc:
-        print(f"Business redirect error: {exc}")
+        return
 
+    if text in ("🇺🇿 O‘zbekcha", "O‘zbekcha", "UZ"):
+        context.user_data["business_lang"] = "uz"
+        await message.reply_text(
+            "👇 To‘liq ma’lumot uchun bizning botimizga o‘ting",
+            reply_markup=ReplyKeyboardMarkup(
+                [["🎉 FUNLANDIA BOTINI OCHISH"]],
+                resize_keyboard=True,
+                one_time_keyboard=False,
+            ),
+        )
+        return
+
+    # Any first message: even ".", "123", emoji, or an arbitrary word.
+    # If language has not been selected yet, ask for it.
+    if not lang:
+        await message.reply_text(
+            "👋 Здравствуйте! Выберите язык / Tilni tanlang:",
+            reply_markup=ReplyKeyboardMarkup(
+                [["🇷🇺 Русский", "🇺🇿 O‘zbekcha"]],
+                resize_keyboard=True,
+                one_time_keyboard=False,
+            ),
+        )
+        return
+
+    # After the language is selected, every subsequent message gets
+    # the short redirect in that same language.
+    if lang == "uz":
+        text_out = "👇 To‘liq ma’lumot uchun bizning botimizga o‘ting"
+        button = "🎉 FUNLANDIA BOTINI OCHISH"
+    else:
+        text_out = "👇 Для полной информации перейдите в наш бот"
+        button = "🎉 ОТКРЫТЬ FUNLANDIA"
+
+    await message.reply_text(
+        text_out,
+        reply_markup=ReplyKeyboardMarkup(
+            [[button]],
+            resize_keyboard=True,
+            one_time_keyboard=False,
+        ),
+    )
 
 def main():
     if not BOT_TOKEN:
