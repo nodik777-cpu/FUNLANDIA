@@ -56,6 +56,13 @@ def save_photos(data):
     with open(PHOTO_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+def normalize_photo_list(value):
+    if isinstance(value, list):
+        return [str(x) for x in value if x]
+    if isinstance(value, str) and value:
+        return [value]
+    return []
+
 def is_admin(update: Update):
     return bool(ADMIN_CHAT_ID) and str(update.effective_chat.id) == str(ADMIN_CHAT_ID)
 
@@ -300,9 +307,9 @@ async def birthday_gallery(update: Update, lang):
 async def send_photo_key(update: Update, context: ContextTypes.DEFAULT_TYPE, key):
     lang = context.user_data.get("lang", "ru")
     photos = load_photos()
-    file_id = photos.get(key)
+    file_ids = normalize_photo_list(photos.get(key))
     title = PHOTO_TITLES_UZ.get(key, key) if lang == "uz" else PHOTO_KEYS.get(key, key)
-    if not file_id:
+    if not file_ids:
         await update.message.reply_text(
             f"📸 {title}\n\nФото пока не подключено. Администратор добавит его после загрузки."
             if lang == "uz" else
@@ -310,11 +317,13 @@ async def send_photo_key(update: Update, context: ContextTypes.DEFAULT_TYPE, key
             reply_markup=funlandia_menu(lang) if key not in ("birthday1", "birthday2", "birthday3") else birthday_menu(lang)
         )
         return
-    await update.message.reply_photo(
-        photo=file_id,
-        caption=title,
-        reply_markup=funlandia_menu(lang) if key not in ("birthday1", "birthday2", "birthday3") else birthday_menu(lang)
-    )
+    reply_markup = funlandia_menu(lang) if key not in ("birthday1", "birthday2", "birthday3") else birthday_menu(lang)
+    for index, file_id in enumerate(file_ids):
+        await update.message.reply_photo(
+            photo=file_id,
+            caption=title if index == 0 else None,
+            reply_markup=reply_markup if index == len(file_ids) - 1 else None
+        )
 
 async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
@@ -324,16 +333,36 @@ async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keys = "\n".join(f"/setphoto {k}" for k in PHOTO_KEYS)
         await update.message.reply_text(
             "Использование:\n"
-            "/setphoto entrance\n"
-            "Затем отправьте фотографию.\n\n"
+            "/setphoto entrance\n\n"
+            "После этого отправляйте сколько угодно фотографий подряд.\n"
+            "Когда закончите, отправьте /donephoto.\n\n"
             "Доступные ключи:\n" + keys
         )
         return
     key = args[0]
     context.user_data["setting_photo"] = key
+    photos = load_photos()
+    count = len(normalize_photo_list(photos.get(key)))
     await update.message.reply_text(
-        f"📸 Теперь отправьте фотографию для: {PHOTO_KEYS[key]}\n\n"
-        "После отправки фото бот сохранит его."
+        f"📸 Раздел: {PHOTO_KEYS[key]}\n\n"
+        f"Уже сохранено: {count} фото.\n\n"
+        "Теперь отправляйте фотографии подряд — 2, 5, 10 и больше.\n"
+        "Когда закончите, отправьте /donephoto.\n\n"
+        "Новые фото будут ДОБАВЛЯТЬСЯ, старые не удаляются."
+    )
+
+async def donephoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        return
+    key = context.user_data.pop("setting_photo", None)
+    if not key:
+        await update.message.reply_text("ℹ️ Сейчас нет активной загрузки фотографий.")
+        return
+    photos = load_photos()
+    count = len(normalize_photo_list(photos.get(key)))
+    await update.message.reply_text(
+        f"✅ Готово! Для «{PHOTO_KEYS[key]}» сохранено: {count} фото.\n\n"
+        "Теперь можно выбрать следующий раздел через /setphoto key."
     )
 
 async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -344,12 +373,13 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     photo = update.message.photo[-1]
     photos = load_photos()
-    photos[key] = photo.file_id
+    file_ids = normalize_photo_list(photos.get(key))
+    file_ids.append(photo.file_id)
+    photos[key] = file_ids
     save_photos(photos)
-    context.user_data.pop("setting_photo", None)
     await update.message.reply_text(
-        f"✅ Фото сохранено: {PHOTO_KEYS[key]}\n\n"
-        "Чтобы добавить следующее, используйте /setphoto key"
+        f"✅ Фото №{len(file_ids)} сохранено для: {PHOTO_KEYS[key]}\n"
+        "Можешь отправить следующее фото. Когда закончишь — /donephoto"
     )
 
 async def birthday_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -493,6 +523,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setphoto", setphoto))
+    app.add_handler(CommandHandler("donephoto", donephoto))
     app.add_handler(MessageHandler(filters.PHOTO, receive_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
     app.add_error_handler(error_handler)
