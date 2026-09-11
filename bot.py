@@ -72,7 +72,7 @@ def is_admin(update: Update):
 def menu(lang="ru"):
     if lang == "uz":
         return ReplyKeyboardMarkup([
-            ["🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA", "🎟️ Narxlar"],
+            ["📸 FOTO-GID", "🎟️ Narxlar"],
             ["🤖 Avto-kotib", "🎁 Aksiya oyi"],
             ["🎠 Ko‘ngilochar"],
             ["📍 Manzil"],
@@ -82,7 +82,7 @@ def menu(lang="ru"):
             ["🇷🇺 Русский"],
         ], resize_keyboard=True)
     return ReplyKeyboardMarkup([
-        ["🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA", "🎟️ Цены"],
+        ["📸 ФОТО-ГИД", "🎟️ Цены"],
         ["🤖 Авто-секретарь", "🎁 Акция месяца"],
         ["🎠 Развлечения"],
         ["📍 Адрес"],
@@ -645,7 +645,7 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=menu(lang)
         )
 
-    if text in ("🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA",):
+    if text in ("📸 ФОТО-ГИД", "📸 FOTO-GID"):
         return await funlandia(update, lang)
 
     if text in ("🎁 Акция месяца", "🎁 Aksiya oyi"):
