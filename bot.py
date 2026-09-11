@@ -19,6 +19,7 @@ os.makedirs(PHOTO_DIR, exist_ok=True)
 PHOTO_FILE = os.path.join(PHOTO_DIR, "photos.json")
 
 PHOTO_KEYS = {
+    "promotion": "🎁 Акция месяца",
     "entrance": "🚪 Вход в FUNLANDIA",
     "cashier": "🎟️ Касса",
     "trampoline": "🤸 Батуты",
@@ -72,7 +73,7 @@ def menu(lang="ru"):
     if lang == "uz":
         return ReplyKeyboardMarkup([
             ["🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA", "🎟️ Narxlar"],
-            ["🎁 Aksiya sentyabr", "🎠 Ko‘ngilochar"],
+            ["🎁 Aksiya oyi", "🎠 Ko‘ngilochar"],
             ["📍 Manzil"],
             ["🎉 Tug‘ilgan kunni bron qilish"],
             ["🕐 Ish vaqti", "📞 Kontakt"],
@@ -81,7 +82,7 @@ def menu(lang="ru"):
         ], resize_keyboard=True)
     return ReplyKeyboardMarkup([
         ["🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA", "🎟️ Цены"],
-        ["🎁 Акция сентября", "🎠 Развлечения"],
+        ["🎁 Акция месяца", "🎠 Развлечения"],
         ["📍 Адрес"],
         ["🎉 Забронировать день рождения"],
         ["🕐 Время работы", "📞 Контакт"],
@@ -298,15 +299,28 @@ async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text, reply_markup=menu(lang))
 
-async def september_promo(update: Update, lang):
-    text = (
-        "🎁 АКЦИЯ СЕНТЯБРЯ\n\n"
-        "Следите за условиями акции FUNLANDIA! 🎉"
-        if lang == "ru" else
-        "🎁 SENTYABR AKSIYASI\n\n"
-        "FUNLANDIA aksiyasi shartlarini kuzatib boring! 🎉"
-    )
-    await update.message.reply_text(text, reply_markup=menu(lang))
+async def september_promo(update: Update, context: ContextTypes.DEFAULT_TYPE, lang):
+    key = "promotion"
+    photos = load_photos()
+    file_ids = normalize_photo_list(photos.get(key))
+
+    if file_ids:
+        title = "🎁 АКЦИЯ МЕСЯЦА" if lang == "ru" else "🎁 OY AKSIYASI"
+        for index, file_id in enumerate(file_ids):
+            await update.message.reply_photo(
+                photo=file_id,
+                caption=title if index == 0 else None,
+                reply_markup=menu(lang) if index == len(file_ids) - 1 else None
+            )
+    else:
+        text = (
+            "🎁 АКЦИЯ МЕСЯЦА\n\n"
+            "Фото акции пока не загружены."
+            if lang == "ru" else
+            "🎁 OY AKSIYASI\n\n"
+            "Aksiya fotosuratlari hali yuklanmagan."
+        )
+        await update.message.reply_text(text, reply_markup=menu(lang))
 
 
 async def birthday_gallery(update: Update, lang):
@@ -358,13 +372,43 @@ async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["setting_photo"] = key
     photos = load_photos()
     count = len(normalize_photo_list(photos.get(key)))
+    if key == "promotion":
+        # Starting a new monthly promotion replaces the previous promotion photos.
+        photos["promotion"] = []
+        save_photos(photos)
+        context.user_data["promotion_new"] = True
+        await update.message.reply_text(
+            "📸 Раздел: 🎁 Акция месяца\n\n"
+            "Старая акция очищена.\n\n"
+            "Теперь отправьте 2 новые фотографии акции подряд.\n"
+            "После второй фотографии отправьте /donephoto."
+        )
+    else:
+        await update.message.reply_text(
+            f"📸 Раздел: {PHOTO_KEYS[key]}\n\n"
+            f"Уже сохранено: {count} фото.\n\n"
+            "Теперь отправляйте фотографии подряд — 2, 5, 10 и больше.\n"
+            "Когда закончите, отправьте /donephoto.\n\n"
+            "Новые фото будут ДОБАВЛЯТЬСЯ, старые не удаляются."
+        )
+
+async def setpromo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        return
+
+    key = "promotion"
+    context.user_data["setting_photo"] = key
+    photos = load_photos()
+    photos["promotion"] = []
+    save_photos(photos)
+
     await update.message.reply_text(
-        f"📸 Раздел: {PHOTO_KEYS[key]}\n\n"
-        f"Уже сохранено: {count} фото.\n\n"
-        "Теперь отправляйте фотографии подряд — 2, 5, 10 и больше.\n"
-        "Когда закончите, отправьте /donephoto.\n\n"
-        "Новые фото будут ДОБАВЛЯТЬСЯ, старые не удаляются."
+        "📸 АКЦИЯ МЕСЯЦА\n\n"
+        "Старая акция очищена.\n\n"
+        "Теперь отправьте 2 новые фотографии подряд.\n"
+        "После этого отправьте /donephoto."
     )
+
 
 async def donephoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
@@ -469,8 +513,8 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in ("🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA",):
         return await funlandia(update, lang)
 
-    if text in ("🎁 Акция сентября", "🎁 Aksiya sentyabr"):
-        return await september_promo(update, lang)
+    if text in ("🎁 Акция месяца", "🎁 Aksiya oyi"):
+        return await september_promo(update, context, lang)
 
     if text in ("🎟️ Цены", "🎟️ Narxlar"):
         return await prices(update, lang)
@@ -543,6 +587,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setphoto", setphoto))
+    app.add_handler(CommandHandler("setpromo", setpromo))
     app.add_handler(CommandHandler("donephoto", donephoto))
     app.add_handler(MessageHandler(filters.PHOTO, receive_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
