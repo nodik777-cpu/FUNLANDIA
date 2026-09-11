@@ -24,7 +24,7 @@ PHOTO_KEYS = {
     "carousel": "🎠 Карусели",
     "arcade": "🎮 Игровые автоматы",
     "autodrome": "🏎️ Автодром",
-    "ninja": "🥷 Ninja",
+    "ninja": "🪢 Kanat yo‘li",
     "birthday1": "🎈 Зона №1",
     "birthday2": "🎈 Зона №2",
     "birthday3": "🎈 Зона №3",
@@ -38,7 +38,7 @@ PHOTO_TITLES_UZ = {
     "carousel": "🎠 Karusellar",
     "arcade": "🎮 O'yin avtomatlari",
     "autodrome": "🏎️ Avtodrom",
-    "ninja": "🥷 Ninja",
+    "ninja": "🪢 Kanat yo‘li",
     "birthday1": "🎈 1-zona",
     "birthday2": "🎈 2-zona",
     "birthday3": "🎈 3-zona",
@@ -69,7 +69,7 @@ def is_admin(update: Update):
 def menu(lang="ru"):
     if lang == "uz":
         return ReplyKeyboardMarkup([
-            ["🎡 FUNLANDIA", "🎟️ Narxlar"],
+            ["🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA", "🎟️ Narxlar"],
             ["🎠 Ko‘ngilochar", "📍 Manzil"],
             ["🎉 Tug‘ilgan kunni bron qilish"],
             ["🕐 Ish vaqti", "📞 Kontakt"],
@@ -77,7 +77,7 @@ def menu(lang="ru"):
             ["🇷🇺 Русский"],
         ], resize_keyboard=True)
     return ReplyKeyboardMarkup([
-        ["🎡 FUNLANDIA", "🎟️ Цены"],
+        ["🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA", "🎟️ Цены"],
         ["🎠 Развлечения", "📍 Адрес"],
         ["🎉 Забронировать день рождения"],
         ["🕐 Время работы", "📞 Контакт"],
@@ -91,14 +91,14 @@ def funlandia_menu(lang="ru"):
             ["🚪 FUNLANDIA kirish", "🎟️ Kassa"],
             ["🤸 Batutlar", "🛝 Bolalar maydonchasi"],
             ["🎠 Karusellar", "🎮 O'yin avtomatlari"],
-            ["🏎️ Avtodrom", "🥷 Ninja"],
+            ["🏎️ Avtodrom", "🪢 Kanat yo‘li"],
             ["🔙 Orqaga"],
         ], resize_keyboard=True)
     return ReplyKeyboardMarkup([
         ["🚪 Вход в FUNLANDIA", "🎟️ Касса"],
         ["🤸 Батуты", "🛝 Детская площадка"],
         ["🎠 Карусели", "🎮 Игровые автоматы"],
-        ["🏎️ Автодром", "🥷 Ninja"],
+        ["🏎️ Автодром", "🪢 Канатная дорога"],
         ["🔙 Назад"],
     ], resize_keyboard=True)
 
@@ -451,7 +451,7 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=menu(lang)
         )
 
-    if text in ("🎡 FUNLANDIA",):
+    if text in ("🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA",):
         return await funlandia(update, lang)
 
     if text in ("🎟️ Цены", "🎟️ Narxlar"):
@@ -483,7 +483,7 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎠 Карусели": "carousel",
         "🎮 Игровые автоматы": "arcade",
         "🏎️ Автодром": "autodrome",
-        "🥷 Ninja": "ninja",
+        "🪢 Канатная дорога": "ninja",
         "🚪 FUNLANDIA kirish": "entrance",
         "🎟️ Kassa": "cashier",
         "🤸 Batutlar": "trampoline",
@@ -491,7 +491,7 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎠 Karusellar": "carousel",
         "🎮 O'yin avtomatlari": "arcade",
         "🏎️ Avtodrom": "autodrome",
-        "🥷 Ninja": "ninja",
+        "🪢 Канатная дорога": "ninja",
         "🎈 Зона №1": "birthday1",
         "🎈 Зона №2": "birthday2",
         "🎈 Зона №3": "birthday3",
