@@ -177,109 +177,147 @@ async def secretary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Friendly auto-secretary: greet first, then answer; unknown questions go to admin."""
     lang = context.user_data.get("lang", "ru")
-    question = (update.effective_message.text or "").strip().lower()
+    raw = (update.effective_message.text or "").strip()
+    question = raw.lower()
 
-    price_words = ("цен", "стоим", "сколько", "price", "narx", "so'm", "сум")
-    birthday_words = ("день рождения", "день рожд", "birthday", "tug‘ilgan", "tugilgan", "брон", "забронировать")
-    hours_words = ("график", "время работы", "работаете", "открыт", "закрыт", "иш ваqти", "ish vaqti", "когда работает")
-    monday_words = ("понедель", "санитар", "санитарный", "dushanba", "sanitariya")
-    address_words = ("адрес", "где находит", "где вы", "манзил", "manzil")
-    phone_words = ("телефон", "номер", "позвон", "контакт", "телеграм", "telegram", "instagram", "инстаграм")
-    playground_age_words = ("возраст площадки", "возраст детской площадки", "сколько лет на площадку", "с какого возраста на площадку", "площадка с какого возраста",
-                            "yosh", "maydoncha necha yosh", "maydonchaga necha yoshdan", "bolalar maydonchasi yosh")
-    trampoline_age_words = ("возраст батута", "возраст батут", "с какого возраста батут", "батут с какого возраста", "на батут с какого возраста",
-                            "batut necha yosh", "batutga necha yoshdan", "batut yoshi")
-    age_general_words = ("возраст", "сколько лет", "с какого возраста", "неполный год", "1 год", "7 лет", "16 лет", "yoshdan", "necha yosh")
+    # First contact: always greet and invite the client to ask a question.
+    if not context.user_data.get("secretary_greeted"):
+        context.user_data["secretary_greeted"] = True
+
+        greetings = (
+            "привет", "здравствуйте", "здравствуй", "добрый день",
+            "добрый вечер", "доброе утро", "салом", "салом алейкум",
+            "ассалому алейкум", "алейкум ассалом", "hello", "hi",
+            "salom", "assalomu alaykum"
+        )
+
+        if any(word in question for word in greetings):
+            await update.effective_message.reply_text(
+                "👋 Здравствуйте! Добро пожаловать в FUNLANDIA!\n\n"
+                "😊 Чем могу помочь?\n\n"
+                "Я могу рассказать о ценах, развлечениях, возрасте детей, "
+                "дне рождения, свободных зонах, адресе и режиме работы."
+            )
+            return
+
+        # Even if the first message is a question rather than a greeting,
+        # introduce the secretary before answering it.
+        await update.effective_message.reply_text(
+            "👋 Здравствуйте! Добро пожаловать в FUNLANDIA!\n\n"
+            "😊 Чем могу помочь?"
+        )
+
+    # Friendly greetings at any later point.
+    greetings = (
+        "привет", "здравствуйте", "здравствуй", "добрый день",
+        "добрый вечер", "доброе утро", "салом", "салом алейкум",
+        "ассалому алейкум", "алейкум ассалом", "hello", "hi",
+        "salom", "assalomu alaykum"
+    )
+    if any(word in question for word in greetings):
+        await update.effective_message.reply_text(
+            "👋 Здравствуйте! 😊 Чем могу помочь?"
+            if lang == "ru" else
+            "👋 Assalomu alaykum! 😊 Sizga qanday yordam bera olaman?"
+        )
+        return
+
+    price_words = ("цена", "цены", "стоимость", "сколько стоит", "сколько", "price", "narx")
+    birthday_words = (
+        "день рождения", "день рожд", "birthday",
+        "tug‘ilgan", "tugilgan", "тугилган кун"
+    )
+    direct_booking_words = (
+        "оформить бронь", "начать бронь", "начать бронирование",
+        "оформить бронирование", "заполнить заявку",
+        "bronni boshlash", "bron qilishni boshlash"
+    )
+    monday_words = ("понедельник", "санитар", "санитарный", "уборка", "dushanba", "sanitariya")
+    hours_words = ("работаете", "работа", "открыты", "открываетесь", "закрываетесь", "время работы", "режим", "soat")
+    address_words = ("адрес", "где вы", "где находитесь", "как найти", "manzil", "qayerda")
+    contact_words = ("телефон", "номер", "позвонить", "инстаграм", "instagram", "телеграм", "telegram", "контакт")
+    age_words = ("возраст", "лет", "до скольки", "с какого возраста", "сколько лет", "yosh", "necha yosh")
 
     if any(word in question for word in price_words):
         return await prices(update, lang)
 
-    if any(word in question for word in playground_age_words):
-        text = (
-            "🛝 BOLALAR MAYDONCHASI\n\n"
-            "👶 1 yoshgacha — bepul.\n"
-            "👧 1 yoshdan 16 yoshgacha — kirish pullik.\n"
-            "🎉 Bolalar xavfsizlik qoidalariga rioya qilishlari kerak."
-            if lang == "uz" else
-            "🛝 ДЕТСКАЯ ПЛОЩАДКА\n\n"
-            "👶 До 1 года — бесплатно.\n"
-            "👧 От 1 года до 16 лет — вход платный.\n"
-            "🎉 Дети должны соблюдать правила безопасности."
-        )
-        return await update.effective_message.reply_text(text, reply_markup=menu(lang))
-
-    if any(word in question for word in trampoline_age_words):
-        text = (
-            "🤸 БАТУТ ЗОНАСИ\n\n"
-            "👧 Батут зонасига 7 yoshdan boshlab bolalar qo‘yiladi.\n"
-            "👨‍👩‍👧 7 yoshdan boshlab bola ota-ona yoki katta yoshli hamroh nazoratida bo‘lishi kerak."
-            if lang == "uz" else
-            "🤸 БАТУТНАЯ ЗОНА\n\n"
-            "👧 На батутную зону допускаются дети от 7 лет.\n"
-            "👨‍👩‍👧 Ребёнок должен находиться под присмотром родителей или сопровождающего взрослого."
-        )
-        return await update.effective_message.reply_text(text, reply_markup=menu(lang))
-
-    if any(word in question for word in age_general_words):
-        text = (
-            "👶 1 yoshgacha — bolalar maydonchasiga kirish bepul.\n"
-            "🛝 1 yoshdan 16 yoshgacha — bolalar maydonchasiga kirish pullik.\n"
-            "🤸 Batut zonasi — 7 yoshdan boshlab va ota-ona yoki katta yoshli hamroh nazoratida."
-            if lang == "uz" else
-            "👶 До 1 года — детская площадка бесплатно.\n"
-            "🛝 От 1 года до 16 лет — вход на детскую площадку платный.\n"
-            "🤸 Батутная зона — с 7 лет и под присмотром родителей или сопровождающего взрослого."
-        )
-        return await update.effective_message.reply_text(text, reply_markup=menu(lang))
-
     if any(word in question for word in birthday_words):
         return await birthday_gallery(update, lang)
 
+    if any(word in question for word in direct_booking_words):
+        return await birthday(update, context)
+
     if any(word in question for word in monday_words):
-        text = (
-            "🧹 Har dushanba — 14:00 gacha sanitariya kuni.\n"
-            "🎉 Sizni 14:00 dan 22:00 gacha kutamiz."
-            if lang == "uz" else
-            "🧹 Каждый понедельник — санитарный день до 14:00.\n"
-            "🎉 Ждём вас с 14:00 до 22:00."
+        await update.effective_message.reply_text(
+            "🧼 Каждый понедельник — санитарный день до 14:00.\n"
+            "С 14:00 до 22:00 FUNLANDIA работает."
         )
-        return await update.effective_message.reply_text(text, reply_markup=menu(lang))
+        return
 
     if any(word in question for word in hours_words):
         return await hours(update, lang)
 
     if any(word in question for word in address_words):
-        return await simple(update, lang, "address")
+        return await simple(update, "address", lang)
 
-    if any(word in question for word in phone_words):
+    if any(word in question for word in contact_words):
         return await contacts(update, lang)
 
-    # Anything outside the known FAQ is passed to the administrator.
-    username = update.effective_user.username
-    display_name = update.effective_user.full_name or "Без имени"
-    user_ref = f"@{username}" if username else "без username"
-    admin_text = (
-        "🤖 АВТО-СЕКРЕТАРЬ — НОВЫЙ СЛОЖНЫЙ ВОПРОС\n\n"
-        f"Клиент: {display_name}\n"
-        f"Telegram: {user_ref}\n"
-        f"Язык: {'UZ' if lang == 'uz' else 'RU'}\n\n"
-        f"Вопрос:\n{update.effective_message.text}"
-    )
+    if any(word in question for word in age_words):
+        if "батут" in question or "trampoline" in question:
+            await update.effective_message.reply_text(
+                "🤸 Батуты: с 7 лет, под присмотром родителей/взрослого."
+            )
+        elif "площад" in question or "playground" in question:
+            await update.effective_message.reply_text(
+                "🛝 Детская площадка: до 1 года — бесплатно; от 1 до 16 лет — вход платный."
+            )
+        else:
+            await update.effective_message.reply_text(
+                "🛝 Детская площадка: до 1 года — бесплатно; от 1 до 16 лет — вход платный.\n"
+                "🤸 Батуты: с 7 лет, под присмотром родителей/взрослого."
+            )
+        return
+
+    # Do NOT send every first/unknown phrase straight to admin without context.
+    # Ask for clarification first; only escalate when the client confirms they
+    # need help with something the secretary cannot answer.
+    if not context.user_data.get("secretary_clarification_asked"):
+        context.user_data["secretary_clarification_asked"] = True
+        await update.effective_message.reply_text(
+            "😊 Конечно. Уточните, пожалуйста, что именно вас интересует?\n\n"
+            "Например: цены, день рождения, развлечения, возраст, адрес или время работы."
+        )
+        return
+
+    user = update.effective_user
+    name = user.full_name or "Без имени"
+    username = user.username or "без username"
 
     if ADMIN_CHAT_ID:
         try:
-            await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text)
+            await context.bot.send_message(
+                chat_id=ADMIN_CHAT_ID,
+                text=(
+                    "🤖 ВОПРОС ОТ КЛИЕНТА\n\n"
+                    f"👤 {name}\n"
+                    f"📱 @{username}\n"
+                    f"🌐 Язык: {lang}\n\n"
+                    f"❓ {raw}"
+                )
+            )
         except Exception as exc:
-            print(f"Admin notification error: {exc}")
+            print(f"Secretary admin notification error: {exc}")
 
     await update.effective_message.reply_text(
-        "Savolingizni administratorga yubordim. Tez orada siz bilan bog‘lanishadi."
-        if lang == "uz" else
-        "Я передал ваш вопрос администратору FUNLANDIA. Вам ответят в ближайшее время.",
-        reply_markup=menu(lang)
+        "Спасибо! Я передал ваш вопрос администратору FUNLANDIA. "
+        "С вами свяжутся."
+        if lang == "ru" else
+        "Rahmat! Savolingizni FUNLANDIA administratoriga yubordim. "
+        "Siz bilan bog‘lanishadi."
     )
-
 
 async def prices(update: Update, lang):
     if lang == "uz":
@@ -461,11 +499,17 @@ async def september_promo(update: Update, context: ContextTypes.DEFAULT_TYPE, la
 async def birthday_gallery(update: Update, lang):
     """Show birthday-zone photos first, then the zone/booking buttons."""
     intro = (
-        "🎂 TUG‘ILГАН KUN FUNLANDIA'DA\n\n"
-        "🎈 Bayram zonalari fotosuratlari:"
+        "🎂 FUNLANDIA'DA TUG‘ILGAN KUN!\n\n"
+        "🎈 Bayram zonalari fotosuratlari:\n"
+        "🪑 1️⃣ Zona 1\n"
+        "🪑 2️⃣ Zona 2\n"
+        "🪑 3️⃣ Zona 3"
         if lang == "uz" else
-        "🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA\n\n"
-        "🎈 Фотографии зон для празднования:"
+        "🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA!\n\n"
+        "🎈 Фотографии зон для празднования:\n"
+        "🪑 1️⃣ Зона 1\n"
+        "🪑 2️⃣ Зона 2\n"
+        "🪑 3️⃣ Зона 3"
     )
     await update.effective_message.reply_text(intro)
 
@@ -617,56 +661,156 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def birthday_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Step-by-step birthday booking form."""
     lang = context.user_data.get("lang", "ru")
-    step = context.user_data["birthday_step"]
-    value = update.effective_message.text.strip()
-    data = context.user_data["birthday"]
-    prompts = (
-        [
-            ("name", "📅 Bayram qaysi sanada bo‘ladi?"),
-            ("date", "👧👦 Nechta bola bo‘ladi?"),
-            ("children", "🕐 Qaysi vaqt sizga qulay?"),
-            ("time", "📞 Bog‘lanish uchun telefon raqamingizni yozing:"),
-            ("phone", "🪑 O‘tirish zonasini tanlang: 1-zona, 2-zona yoki 3-zona."),
-        ] if lang == "uz" else [
-            ("name", "📅 На какую дату планируете праздник?"),
-            ("date", "👧👦 Сколько будет детей?"),
-            ("children", "🕐 Какое время вас интересует?"),
-            ("time", "📞 Оставьте номер телефона для связи."),
-            ("phone", "🪑 Выберите зону посадки: Зона 1, Зона 2 или Зона 3."),
-        ]
-    )
-    key, prompt = prompts[step - 1]
+    step = context.user_data.get("birthday_step", 1)
+    value = (update.effective_message.text or "").strip()
+    data = context.user_data.setdefault("birthday", {})
+
+    # The current step is the field we are receiving.
+    fields_ru = [
+        ("name", "🎂 Как зовут именинника?"),
+        ("age", "🎈 Сколько лет исполнится имениннику?"),
+        ("date", "📅 На какую дату планируете праздник?"),
+        ("children", "👧👦 Сколько будет детей?"),
+        ("time", "🕐 На какое время планируете праздник?"),
+        ("phone", "📞 Оставьте номер телефона для связи:"),
+        ("seat_zone", "🪑 Какую зону посадки выбираете: Зона 1, Зона 2 или Зона 3?"),
+        ("extras", "🎁 Дополнительные услуги\n\n🎈 Оформление шарами\n🫧 Мыльные пузыри\n🎭 Оформление стены с героями\n\nНапишите, что хотите добавить: «шары», «мыльные пузыри», «стена с героями», несколько услуг сразу или «без доп. услуг»."),
+        ("advance", "💰 Аванс — минимум 100 000 сум после подтверждения заявки. Готовы внести аванс после подтверждения? Напишите: да / нет."),
+    ]
+    fields_uz = [
+        ("name", "🎂 Ismalochining ismi nima?"),
+        ("age", "🎈 Ismalochining yoshi nechaga to‘ladi?"),
+        ("date", "📅 Bayram qaysi sanada bo‘ladi?"),
+        ("children", "👧👦 Nechta bola bo‘ladi?"),
+        ("time", "🕐 Bayram uchun qaysi vaqt qulay?"),
+        ("phone", "📞 Bog‘lanish uchun telefon raqamingizni yozing:"),
+        ("seat_zone", "🪑 Qaysi o‘tirish zonasini tanlaysiz: 1-zona, 2-zona yoki 3-zona?"),
+        ("extras", "🎁 Qo‘shimcha xizmatlar\n\n🎈 Sharlar bilan bezatish\n🫧 Sovun pufaklari\n🎭 Qahramonlar bilan devor bezagi\n\nNimani xohlashingizni yozing: «sharlar», «sovun pufaklari», «qahramonlar bilan devor», bir nechta xizmat yoki «qo‘shimcha xizmatlarsiz»."),
+        ("advance", "💰 Avans — ariza tasdiqlangandan keyin kamida 100 000 so‘m. Tasdiqlangandan keyin avans to‘lashga tayyormisiz? Ha / yo‘q."),
+    ]
+
+    fields = fields_uz if lang == "uz" else fields_ru
+
+    if not value:
+        await update.effective_message.reply_text(
+            "Пожалуйста, напишите ответ."
+            if lang == "ru" else
+            "Iltimos, javobingizni yozing."
+        )
+        return
+
+    key, next_prompt = fields[step - 1]
     data[key] = value
-    if step < 5:
+
+    if step < len(fields):
         context.user_data["birthday_step"] = step + 1
-        await update.effective_message.reply_text(prompt)
-    else:
-        context.user_data["birthday_step"] = 6
-        await update.effective_message.reply_text(prompt)
+        await update.effective_message.reply_text(next_prompt)
+        return
+
+    # All fields collected: show a confirmation summary instead of sending
+    # immediately to the administrator.
+    context.user_data["birthday_step"] = 10
+    summary = (
+        "🎂 ПРОВЕРЬТЕ ЗАЯВКУ НА ДЕНЬ РОЖДЕНИЯ\n\n"
+        f"👤 Именинник: {data['name']}\n"
+        f"🎈 Возраст: {data['age']}\n"
+        f"📅 Дата: {data['date']}\n"
+        f"👧👦 Детей: {data['children']}\n"
+        f"🕐 Время: {data['time']}\n"
+        f"📞 Телефон: {data['phone']}\n"
+        f"🪑 Зона посадки: {data['seat_zone']}\n"
+        f"🎁 Дополнительные услуги: {data['extras']}\n"
+        f"💰 Аванс: {data['advance']}\n\n"
+        "Нажмите «Подтвердить заявку», чтобы отправить её администратору."
+        if lang == "ru" else
+        "🎂 TUG‘ILGAN KUN BRONI ARIZASINI TEKSHIRING\n\n"
+        f"👤 Ismalochi: {data['name']}\n"
+        f"🎈 Yosh: {data['age']}\n"
+        f"📅 Sana: {data['date']}\n"
+        f"👧👦 Bolalar: {data['children']}\n"
+        f"🕐 Vaqt: {data['time']}\n"
+        f"📞 Telefon: {data['phone']}\n"
+        f"🪑 O‘tirish zonasi: {data['seat_zone']}\n"
+        f"🎁 Qo‘shimcha xizmatlar: {data['extras']}\n"
+        f"💰 Avans: {data['advance']}\n\n"
+        "Arizani administratorga yuborish uchun «Arizani tasdiqlash» tugmasini bosing."
+    )
+    keyboard = (
+        ReplyKeyboardMarkup(
+            [["✅ Подтвердить заявку", "✏️ Изменить"], ["🔙 Назад"]],
+            resize_keyboard=True
+        )
+        if lang == "ru" else
+        ReplyKeyboardMarkup(
+            [["✅ Arizani tasdiqlash", "✏️ O‘zgartirish"], ["🔙 Orqaga"]],
+            resize_keyboard=True
+        )
+    )
+    await update.effective_message.reply_text(summary, reply_markup=keyboard)
+
 
 async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send the completed birthday booking to the administrator."""
     lang = context.user_data.get("lang", "ru")
-    data = context.user_data["birthday"]
-    data["seat_zone"] = update.effective_message.text.strip()
+    data = context.user_data.get("birthday", {})
     username = update.effective_user.username or "нет username"
+
     msg = (
         "🎂 НОВАЯ ЗАЯВКА FUNLANDIA\n\n"
-        f"Именинник: {data['name']}\nДата: {data['date']}\nДетей: {data['children']}\n"
-        f"Время: {data['time']}\nТелефон: {data['phone']}\nЗона посадки: {data['seat_zone']}\nTelegram: @{username}"
+        f"👤 Именинник: {data.get('name', '')}\n"
+        f"🎈 Возраст: {data.get('age', '')}\n"
+        f"📅 Дата: {data.get('date', '')}\n"
+        f"👧👦 Детей: {data.get('children', '')}\n"
+        f"🕐 Время: {data.get('time', '')}\n"
+        f"📞 Телефон: {data.get('phone', '')}\n"
+        f"🪑 Зона посадки: {data.get('seat_zone', '')}\n"
+        f"🎁 Дополнительные услуги: {data.get('extras', '')}\n"
+        f"💰 Аванс: {data.get('advance', '')}\n"
+        f"Telegram: @{username}"
     )
+
     if ADMIN_CHAT_ID:
         try:
             await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=msg)
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"Birthday admin notification error: {exc}")
+
     context.user_data.clear()
+    context.user_data["lang"] = lang
+
     await update.effective_message.reply_text(
-        "✅ Arizangiz qabul qilindi!\nAdministrator FUNLANDIA siz bilan bog‘lanadi."
+        "✅ Arizangiz administratorga yuborildi!\n\n"
+        "💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\n"
+        "Administrator FUNLANDIA siz bilan bog‘lanadi."
         if lang == "uz" else
-        "✅ Заявка принята!\n\n💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\nАдминистратор FUNLANDIA свяжется с вами.",
+        "✅ Заявка отправлена администратору!\n\n"
+        "💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\n"
+        "Администратор FUNLANDIA свяжется с вами.",
         reply_markup=menu(lang)
     )
+
+
+async def birthday_confirm_or_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data.get("lang", "ru")
+    text = (update.effective_message.text or "").strip()
+
+    if text in ("✏️ Изменить", "✏️ O‘zgartirish"):
+        context.user_data["birthday_step"] = 1
+        context.user_data["birthday"] = {}
+        await update.effective_message.reply_text(
+            "Начнём заявку заново. 🎂\n\nКак зовут именинника?"
+            if lang == "ru" else
+            "Arizani boshidan boshlaymiz. 🎂\n\nIsmalochining ismi nima?"
+        )
+        return True
+
+    if text in ("✅ Подтвердить заявку", "✅ Arizani tasdiqlash"):
+        await finish_birthday(update, context)
+        return True
+
+    return False
 
 async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.effective_message.text or "").strip()
@@ -742,8 +886,9 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in photo_map:
         return await send_photo_key(update, context, photo_map[text])
 
-    if context.user_data.get("birthday_step") == 6:
-        return await finish_birthday(update, context)
+    if context.user_data.get("birthday_step") == 10:
+        if await birthday_confirm_or_edit(update, context):
+            return
     if context.user_data.get("birthday_step"):
         return await birthday_form(update, context)
 
