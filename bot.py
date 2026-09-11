@@ -723,6 +723,25 @@ def main():
     app.add_handler(CommandHandler("setphoto", setphoto))
     app.add_handler(CommandHandler("setpromo", setpromo))
     app.add_handler(CommandHandler("donephoto", donephoto))
+
+    # Telegram Business / Secretary Mode.
+    # Messages arriving through a connected Business account are delivered
+    # as BUSINESS_MESSAGE updates. We route them through the same handler
+    # so the existing auto-secretary can answer clients on behalf of FUNLANDIA.
+    app.add_handler(
+        MessageHandler(
+            filters.UpdateType.BUSINESS_MESSAGE & filters.PHOTO,
+            receive_photo,
+        )
+    )
+    app.add_handler(
+        MessageHandler(
+            filters.UpdateType.BUSINESS_MESSAGE & filters.TEXT,
+            handler,
+        )
+    )
+
+    # Normal bot chats.
     app.add_handler(MessageHandler(filters.PHOTO, receive_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
     app.add_error_handler(error_handler)
