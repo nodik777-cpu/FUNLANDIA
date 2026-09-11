@@ -534,8 +534,9 @@ async def birthday_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }[lang]
     if not value:
         await update.effective_message.reply_text({"ru":"Пожалуйста, напишите ответ.","uz":"Iltimos, javobingizni yozing.","en":"Please enter your answer."}[lang]); return
-    key,next_prompt=fields[step-1]; data[key]=value
+    key,_current_prompt=fields[step-1]; data[key]=value
     if step<len(fields):
+        next_prompt=fields[step][1]
         context.user_data["birthday_step"]=step+1; await update.effective_message.reply_text(next_prompt); return
     context.user_data["birthday_step"]=10
     if lang=="ru":
@@ -712,6 +713,14 @@ async def business_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message:
         return
+
+    # Secretary must greet only once per Business chat.
+    # Without this guard it answers every incoming message (including "ok"
+    # after a completed booking) and starts the language prompt again.
+    chat_key = f"business_secretary_seen:{getattr(message, 'chat_id', None)}"
+    if context.bot_data.get(chat_key):
+        return
+    context.bot_data[chat_key] = True
 
     keyboard = InlineKeyboardMarkup([
         [
