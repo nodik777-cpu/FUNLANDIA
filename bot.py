@@ -47,6 +47,20 @@ PHOTO_TITLES_UZ = {
     "birthday3": "🎈 3-zona",
 }
 
+PHOTO_TITLES_EN = {
+    "entrance": "🚪 FUNLANDIA Entrance",
+    "cashier": "🎟️ Cashier",
+    "trampoline": "🤸 Trampolines",
+    "playground": "🛝 Kids Playground",
+    "carousel": "🎠 Carousels",
+    "arcade": "🎮 Arcade Games",
+    "autodrome": "🏎️ Bumper Cars",
+    "ninja": "🪢 Rope Course",
+    "birthday1": "🎈 Zone №1",
+    "birthday2": "🎈 Zone №2",
+    "birthday3": "🎈 Zone №3",
+}
+
 def load_photos():
     try:
         with open(PHOTO_FILE, "r", encoding="utf-8") as f:
@@ -78,6 +92,17 @@ def menu(lang="ru"):
             ["🎉 Tug‘ilgan kunni bron qilish", "🕐 Ish vaqti"],
             ["📞 Kontakt", "📸 Instagram"],
             ["📱 Telegram", "🇷🇺 Русский"],
+            ["🇬🇧 English"],
+        ]
+    elif lang == "en":
+        rows = [
+            ["📸 PHOTO GUIDE", "🎟️ Prices"],
+            ["🤖 Auto Secretary", "🎁 Promotion"],
+            ["🎠 Attractions", "📍 Address"],
+            ["🎉 Book a Birthday", "🕐 Opening Hours"],
+            ["📞 Contact", "📸 Instagram"],
+            ["📱 Telegram", "🇷🇺 Русский"],
+            ["🇺🇿 O‘zbekcha"],
         ]
     else:
         rows = [
@@ -87,43 +112,28 @@ def menu(lang="ru"):
             ["🎉 Забронировать день рождения", "🕐 Время работы"],
             ["📞 Контакт", "📸 Instagram"],
             ["📱 Telegram", "🇺🇿 O‘zbekcha"],
+            ["🇬🇧 English"],
         ]
     return ReplyKeyboardMarkup(two_col(rows), resize_keyboard=True)
 
 
 def funlandia_menu(lang="ru"):
     if lang == "uz":
-        rows = [
-            ["🚪 FUNLANDIA kirish", "🎟️ Kassa"],
-            ["🤸 Batutlar", "🛝 Bolalar maydonchasi"],
-            ["🎠 Karusellar", "🎮 O'yin avtomatlari"],
-            ["🏎️ Avtodrom", "🪢 Kanat yo‘li"],
-            ["🔙 Orqaga"],
-        ]
+        rows = [["🚪 FUNLANDIA kirish", "🎟️ Kassa"], ["🤸 Batutlar", "🛝 Bolalar maydonchasi"], ["🎠 Karusellar", "🎮 O'yin avtomatlari"], ["🏎️ Avtodrom", "🪢 Kanat yo‘li"], ["🔙 Orqaga"]]
+    elif lang == "en":
+        rows = [["🚪 FUNLANDIA Entrance", "🎟️ Cashier"], ["🤸 Trampolines", "🛝 Kids Playground"], ["🎠 Carousels", "🎮 Arcade Games"], ["🏎️ Bumper Cars", "🪢 Rope Course"], ["🔙 Back"]]
     else:
-        rows = [
-            ["🚪 Вход в FUNLANDIA", "🎟️ Касса"],
-            ["🤸 Батуты", "🛝 Детская площадка"],
-            ["🎠 Карусели", "🎮 Игровые автоматы"],
-            ["🏎️ Автодром", "🪢 Канатная дорога"],
-            ["🔙 Назад"],
-        ]
+        rows = [["🚪 Вход в FUNLANDIA", "🎟️ Касса"], ["🤸 Батуты", "🛝 Детская площадка"], ["🎠 Карусели", "🎮 Игровые автоматы"], ["🏎️ Автодром", "🪢 Канатная дорога"], ["🔙 Назад"]]
     return ReplyKeyboardMarkup(two_col(rows), resize_keyboard=True)
 
 
 def birthday_menu(lang="ru"):
     if lang == "uz":
-        rows = [
-            ["🎈 Zona №1", "🎈 Zona №2"],
-            ["🎈 Zona №3", "📝 Tug‘ilgan kunni bron qilish"],
-            ["🔙 Orqaga"],
-        ]
+        rows = [["🎈 Zona №1", "🎈 Zona №2"], ["🎈 Zona №3", "📝 Tug‘ilgan kunni bron qilish"], ["🔙 Orqaga"]]
+    elif lang == "en":
+        rows = [["🎈 Zone №1", "🎈 Zone №2"], ["🎈 Zone №3", "📝 Book a Birthday"], ["🔙 Back"]]
     else:
-        rows = [
-            ["🎈 Зона №1", "🎈 Зона №2"],
-            ["🎈 Зона №3", "📝 Забронировать день рождения"],
-            ["🔙 Назад"],
-        ]
+        rows = [["🎈 Зона №1", "🎈 Зона №2"], ["🎈 Зона №3", "📝 Забронировать день рождения"], ["🔙 Назад"]]
     return ReplyKeyboardMarkup(two_col(rows), resize_keyboard=True)
 
 def two_col(rows):
@@ -136,31 +146,22 @@ def two_col(rows):
     return out
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # /start ru or /start uz can be used by the Business language buttons.
     requested_lang = context.args[0].lower() if context.args else "ru"
-    lang = "uz" if requested_lang == "uz" else "ru"
+    lang = requested_lang if requested_lang in ("ru", "uz", "en") else "ru"
     context.user_data.clear()
     context.user_data["lang"] = lang
+    messages = {
+        "ru": ("🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA! 🎉\n\nМесто, где дети играют, веселятся и получают яркие эмоции, а родители отдыхают! ❤️\n\n🛝 Лабиринты • 🤸 Батуты • 🎢 Горки • 🎯 Пневмопушки • 🧗 Тарзанка\n\nВыберите интересующий раздел ниже 👇"),
+        "uz": ("🎉 FUNLANDIA'GA XUSH KELIBSIZ! 🎉\n\nBu yerda bolalar o‘ynaydi, quvonadi va yorqin taassurotlar oladi, ota-onalar esa maroqli dam oladi! ❤️\n\n🛝 Labirintlar • 🤸 Batutlar • 🎢 Tepaliklar • 🎯 Pnevmatik to‘plar • 🧗 Tarzanka\n\nKerakli bo‘limni tanlang 👇"),
+        "en": ("🎉 WELCOME TO FUNLANDIA! 🎉\n\nA place where children play, have fun and enjoy bright emotions, while parents relax! ❤️\n\n🛝 Labyrinths • 🤸 Trampolines • 🎢 Slides • 🎯 Air Cannons • 🧗 Rope Adventure\n\nChoose a section below 👇")
+    }
+    await update.effective_message.reply_text(messages[lang], reply_markup=menu(lang))
 
-    if lang == "uz":
-        await update.effective_message.reply_text(
-            "🎉 FUNLANDIA'GA XUSH KELIBSIZ! 🎉\n\n"
-            "Bu yerda bolalar o‘ynaydi, quvonadi va yorqin taassurotlar oladi, "
-            "ota-onalar esa maroqli dam oladi! ❤️\n\n"
-            "🛝 Labirintlar • 🤸 Batutlar • 🎢 Tepaliklar • 🎯 Pnevmatik to‘plar • 🧗 Tarzanka\n\n"
-            "Kerakli bo‘limni tanlang 👇",
-            reply_markup=menu("uz")
-        )
-        return
 
-    await update.effective_message.reply_text(
-        "🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA! 🎉\n\n"
-        "Место, где дети играют, веселятся и получают яркие эмоции, "
-        "а родители отдыхают! ❤️\n\n"
-        "🛝 Лабиринты • 🤸 Батуты • 🎢 Горки • 🎯 Пневмопушки • 🧗 Тарзанка\n\n"
-        "Выберите интересующий раздел ниже 👇",
-        reply_markup=menu("ru")
-    )
+async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.args = ["uz"]
+    return await start(update, context)
+
 
 async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
@@ -176,30 +177,11 @@ async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def secretary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "ru")
-    text = (
-        "🤖 AVTO-KOTIB FUNLANDIA\n\n"
-        "Men sizga yordam beraman:\n"
-        "💰 narxlar\n"
-        "🎂 tug‘ilgan kun va bron\n"
-        "🕐 ish vaqti va sanitariya kuni\n"
-        "📍 manzil\n"
-        "📞 telefon\n"
-        "📸 Instagram\n"
-        "📱 Telegram\n\n"
-        "Savolingizni yozing — kerakli ma’lumotni beraman."
-        if lang == "uz" else
-        "🤖 АВТО-СЕКРЕТАРЬ FUNLANDIA\n\n"
-        "Я помогу вам узнать:\n"
-        "💰 цены\n"
-        "🎂 день рождения и бронирование\n"
-        "🕐 график работы и санитарный день\n"
-        "📍 адрес\n"
-        "📞 телефон\n"
-        "📸 Instagram\n"
-        "📱 Telegram\n\n"
-        "Напишите свой вопрос — я постараюсь сразу ответить."
-    )
-    await update.effective_message.reply_text(text, reply_markup=menu(lang))
+    texts = {
+      "ru": "🤖 АВТО-СЕКРЕТАРЬ FUNLANDIA\n\nЯ помогу вам узнать:\n💰 цены\n🎂 день рождения и бронирование\n🕐 график работы и санитарный день\n📍 адрес\n📞 телефон\n📸 Instagram\n📱 Telegram\n\nНапишите свой вопрос — я постараюсь сразу ответить.",
+      "uz": "🤖 AVTO-KOTIB FUNLANDIA\n\nMen sizga yordam beraman:\n💰 narxlar\n🎂 tug‘ilgan kun va bron\n🕐 ish vaqti va sanitariya kuni\n📍 manzil\n📞 telefon\n📸 Instagram\n📱 Telegram\n\nSavolingizni yozing — kerakli ma’lumotni beraman.",
+      "en": "🤖 FUNLANDIA AUTO SECRETARY\n\nI can help you with:\n💰 prices\n🎂 birthdays and bookings\n🕐 opening hours and sanitation day\n📍 address\n📞 phone\n📸 Instagram\n📱 Telegram\n\nWrite your question — I will try to answer right away."}
+    await update.effective_message.reply_text(texts.get(lang, texts["ru"]), reply_markup=menu(lang))
 
 
 async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -347,242 +329,99 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def prices(update: Update, lang):
     if lang == "uz":
-        text = (
-            "🎟️ FUNLANDIA NARXLARI\n\n"
-            "🛝 BOLALAR ZONASI\n"
-            "🏰 Labirintlar\n🎪 Puflanadigan batutlar\n🎢 Tepaliklar\n🎯 Pnevmatik to‘plar\n\n"
-            "💰 1 soat — 80 000 so‘m\n"
-            "💰 2 soat — 90 000 so‘m\n"
-            "♾️ Cheksiz — 100 000 so‘m\n\n"
-            "👧👦 1 yoshdan 16 yoshgacha bo‘lgan bolalar uchun kirish pullik.\n\n"
-            "━━━━━━━━━━━━━━\n\n"
-            "🤸 BATUT ZONASI\n"
-            "🤸 Professional batutlar\n🧗 Tarzanka\n🛝 17 metrlik tepalik\n\n"
-            "💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n\n"
-            "⚠️ Batut zonasiga 7 yoshdan boshlab bolalar qo‘yiladi va ular ota-ona yoki katta yoshli hamroh nazoratida bo‘lishi kerak.\n\n"
-            "━━━━━━━━━━━━━━\n\n"
-            "🎉 IKKALA ZONA — KO‘PROQ QUVONCH!\n"
-            "🔥 2 zona — 120 000 so‘m\n"
-            "♾️ Ikkala zonaga cheksiz kirish!\n\n"
-            "🎊 O‘YNA • KUL • FUNLANDIA'DA YORQIN TAASSUROTLAR OL!"
-        )
+        text = ("🎟️ FUNLANDIA NARXLARI\n\n🛝 BOLALAR ZONASI\n🏰 Labirintlar\n🎪 Puflanadigan batutlar\n🎢 Tepaliklar\n🎯 Pnevmatik to‘plar\n\n💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n\n👧👦 1 yoshdan 16 yoshgacha — kirish pullik.\n\n🤸 BATUT ZONASI\n💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n⚠️ 7 yoshdan boshlab, ota-ona yoki katta yoshli hamroh nazoratida.\n\n🎉 IKKALA ZONA — 120 000 so‘m\n♾️ Ikkala zonaga cheksiz kirish!")
+    elif lang == "en":
+        text = ("🎟️ FUNLANDIA PRICES\n\n🛝 KIDS ZONE\n🏰 Labyrinths\n🎪 Inflatable trampolines\n🎢 Slides\n🎯 Air cannons\n\n💰 1 hour — 80,000 UZS\n💰 2 hours — 90,000 UZS\n♾️ Unlimited — 100,000 UZS\n\n👧👦 Children from 1 to 16 years — paid entry.\n\n🤸 TRAMPOLINE ZONE\n💰 1 hour — 80,000 UZS\n💰 2 hours — 90,000 UZS\n♾️ Unlimited — 100,000 UZS\n⚠️ From 7 years old, under parent/adult supervision.\n\n🎉 BOTH ZONES — 120,000 UZS\n♾️ Unlimited access to both zones!")
     else:
-        text = (
-            "🎟️ ЦЕНЫ FUNLANDIA\n\n"
-            "🛝 ДЕТСКАЯ ЗОНА\n"
-            "🏰 Лабиринты\n🎪 Надувные батуты\n🎢 Горки\n🎯 Пневмопушки\n\n"
-            "💰 1 час — 80 000 сум\n"
-            "💰 2 часа — 90 000 сум\n"
-            "♾️ Безлимит — 100 000 сум\n\n"
-            "👧👦 Детям от 1 года до 16 лет — вход платный.\n\n"
-            "━━━━━━━━━━━━━━\n\n"
-            "🤸 БАТУТНАЯ ЗОНА\n"
-            "🤸 Профессиональные батуты\n🧗 Тарзанка\n🛝 17-метровая горка\n\n"
-            "💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n\n"
-            "⚠️ На батутную зону допускаются дети от 7 лет и только под присмотром родителей или сопровождающего взрослого.\n\n"
-            "━━━━━━━━━━━━━━\n\n"
-            "🎉 ДВЕ ЗОНЫ — БОЛЬШЕ ВЕСЕЛЬЯ!\n"
-            "🔥 Две зоны — 120 000 сум\n"
-            "♾️ Безлимитное посещение обеих зон!\n\n"
-            "🎊 ИГРАЙ • ВЕСЕЛИСЬ • ПОЛУЧАЙ ЭМОЦИИ В FUNLANDIA!"
-        )
+        text = ("🎟️ ЦЕНЫ FUNLANDIA\n\n🛝 ДЕТСКАЯ ЗОНА\n🏰 Лабиринты\n🎪 Надувные батуты\n🎢 Горки\n🎯 Пневмопушки\n\n💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n\n👧👦 Детям от 1 года до 16 лет — вход платный.\n\n🤸 БАТУТНАЯ ЗОНА\n💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n⚠️ С 7 лет, только под присмотром родителей или взрослого.\n\n🎉 ДВЕ ЗОНЫ — 120 000 сум\n♾️ Безлимитное посещение обеих зон!")
     await update.effective_message.reply_text(text, reply_markup=menu(lang))
+
 
 async def hours(update: Update, lang):
-    text = (
-        "🕐 ВРЕМЯ РАБОТЫ FUNLANDIA\n\n"
-        "🗓 Каждый день: 10:00–22:00\n\n"
-        "🧹 Каждый понедельник — санитарный день до 14:00.\n"
-        "🎉 Ждём вас с 14:00 до 22:00!"
-        if lang == "ru" else
-        "🕐 FUNLANDIA ISH VAQTI\n\n"
-        "🗓 Har kuni: 10:00–22:00\n\n"
-        "🧹 Har dushanba — 14:00 gacha sanitariya kuni.\n"
-        "🎉 Sizni 14:00 dan 22:00 gacha kutamiz!"
-    )
-    await update.effective_message.reply_text(text, reply_markup=menu(lang))
+    texts={"ru":"🕐 ВРЕМЯ РАБОТЫ FUNLANDIA\n\n🗓 Каждый день: 10:00–22:00\n\n🧹 Каждый понедельник — санитарный день до 14:00.\n🎉 Ждём вас с 14:00 до 22:00!", "uz":"🕐 FUNLANDIA ISH VAQTI\n\n🗓 Har kuni: 10:00–22:00\n\n🧹 Har dushanba — 14:00 gacha sanitariya kuni.\n🎉 Sizni 14:00 dan 22:00 gacha kutamiz!", "en":"🕐 FUNLANDIA OPENING HOURS\n\n🗓 Every day: 10:00–22:00\n\n🧹 Every Monday — sanitation day until 14:00.\n🎉 We are open from 14:00 to 22:00!"}
+    await update.effective_message.reply_text(texts.get(lang,texts["ru"]), reply_markup=menu(lang))
+
 
 async def contacts(update: Update, lang):
-    if lang == "uz":
-        text = (
-            "📞 FUNLANDIA ALOQA\n\n"
-            "📞 Kontakt: +998933810055\n"
-            "☎️ Call-markaz: +998555127337\n\n"
-            "📱 Telegram: @Funlandia_Tashkent\n"
-            "📸 Instagram: @funlandiauz"
-        )
-    else:
-        text = (
-            "📞 КОНТАКТЫ FUNLANDIA\n\n"
-            "📞 Контакт: +998933810055\n"
-            "☎️ Колл-центр: +998555127337\n\n"
-            "📱 Telegram: @Funlandia_Tashkent\n"
-            "📸 Instagram: @funlandiauz"
-        )
-    await update.effective_message.reply_text(text, reply_markup=menu(lang))
+    texts={"ru":"📞 КОНТАКТЫ FUNLANDIA\n\n📞 Контакт: +998933810055\n☎️ Колл-центр: +998555127337\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz", "uz":"📞 FUNLANDIA ALOQA\n\n📞 Kontakt: +998933810055\n☎️ Call-markaz: +998555127337\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz", "en":"📞 FUNLANDIA CONTACTS\n\n📞 Contact: +998933810055\n☎️ Call center: +998555127337\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz"}
+    await update.effective_message.reply_text(texts.get(lang,texts["ru"]), reply_markup=menu(lang))
+
 
 async def direct_contact(update: Update, lang, kind):
     if kind == "call":
-        text = (
-            "☎️ CALL-MARKAZ\n\n📞 +998555127337"
-            if lang == "uz" else
-            "☎️ КОЛЛ-ЦЕНТР\n\n📞 +998555127337"
-        )
+        texts={"ru":"☎️ КОЛЛ-ЦЕНТР\n\n📞 +998555127337","uz":"☎️ CALL-MARKAZ\n\n📞 +998555127337","en":"☎️ CALL CENTER\n\n📞 +998555127337"}
     else:
-        text = (
-            "📞 KONTAKT\n\n📞 +998933810055"
-            if lang == "uz" else
-            "📞 КОНТАКТ\n\n📞 +998933810055"
-        )
-    await update.effective_message.reply_text(text, reply_markup=menu(lang))
+        texts={"ru":"📞 КОНТАКТ\n\n📞 +998933810055","uz":"📞 KONTAKT\n\n📞 +998933810055","en":"📞 CONTACT\n\n📞 +998933810055"}
+    await update.effective_message.reply_text(texts.get(lang,texts["ru"]), reply_markup=menu(lang))
 
 async def simple(update: Update, lang, kind):
     if kind == "address":
-        text = f"📍 FUNLANDIA\n\n{ADDRESS}\n\n" + ("Sizni kutamiz! 🎉" if lang == "uz" else "Будем рады видеть вас! 🎉")
-        map_button = InlineKeyboardMarkup([[
-            InlineKeyboardButton(
-                "🗺️ Xaritada ochish" if lang == "uz" else "🗺️ Открыть на карте",
-                url="https://yandex.uz/maps/-/CTT~uR0N"
-            )
-        ]])
-        await update.effective_message.reply_text(text, reply_markup=map_button)
-        return
+        ending={"ru":"Будем рады видеть вас! 🎉","uz":"Sizni kutamiz! 🎉","en":"We look forward to seeing you! 🎉"}
+        text=f"📍 FUNLANDIA\n\n{ADDRESS}\n\n{ending.get(lang,ending['ru'])}"
+        map_text={"ru":"🗺️ Открыть на карте","uz":"🗺️ Xaritada ochish","en":"🗺️ Open map"}
+        keyboard=InlineKeyboardMarkup([[InlineKeyboardButton(map_text.get(lang,map_text["ru"]),url="https://yandex.uz/maps/-/CTT~uR0N")]])
+        await update.effective_message.reply_text(text,reply_markup=keyboard); return
     if kind == "instagram":
-        text = f"📸 Instagram FUNLANDIA\n\n{INSTAGRAM}"
+        label={"ru":"📸 Instagram FUNLANDIA","uz":"📸 Instagram FUNLANDIA","en":"📸 FUNLANDIA Instagram"}[lang]
+        text=f"{label}\n\n{INSTAGRAM}"
     else:
-        text = f"📱 Telegram FUNLANDIA\n\n{TELEGRAM}"
-    await update.effective_message.reply_text(text, reply_markup=menu(lang))
+        label={"ru":"📱 Telegram FUNLANDIA","uz":"📱 Telegram FUNLANDIA","en":"📱 FUNLANDIA Telegram"}[lang]
+        text=f"{label}\n\n{TELEGRAM}"
+    await update.effective_message.reply_text(text,reply_markup=menu(lang))
 
 async def attractions(update: Update, lang):
-    text = (
-        "🎠 BIZNING KO‘NGILOCHARLAR\n\n"
-        "🛝 4 qavatli labirintlar\n🎪 Puflanadigan batutlar\n🤸 Professional batutlar\n"
-        "🎢 Tepaliklar\n🛝 17 metrlik tepalik\n🧗 Tarzanka\n🎯 Pnevmatik to‘plar\n"
-        "🧸 Kichkintoylar zonasi\n🏖️ Kinetik qum\n🎠 Karusellar"
-        if lang == "uz" else
-        "🎠 НАШИ РАЗВЛЕЧЕНИЯ\n\n"
-        "🛝 4-этажные лабиринты\n🎪 Надувные батуты\n🤸 Профессиональные батуты\n"
-        "🎢 Горки\n🛝 17-метровая горка\n🧗 Тарзанка\n🎯 Пневмопушки\n"
-        "🧸 Зона для малышей\n🏖️ Кинетический песок\n🎠 Карусели"
-    )
-    await update.effective_message.reply_text(text, reply_markup=menu(lang))
+    texts={"ru":"🎠 НАШИ РАЗВЛЕЧЕНИЯ\n\n🛝 4-этажные лабиринты\n🎪 Надувные батуты\n🤸 Профессиональные батуты\n🎢 Горки\n🛝 17-метровая горка\n🧗 Тарзанка\n🎯 Пневмопушки\n🧸 Зона для малышей\n🏖️ Кинетический песок\n🎠 Карусели", "uz":"🎠 BIZNING KO‘NGILOCHARLAR\n\n🛝 4 qavatli labirintlar\n🎪 Puflanadigan batutlar\n🤸 Professional batutlar\n🎢 Tepaliklar\n🛝 17 metrlik tepalik\n🧗 Tarzanka\n🎯 Pnevmatik to‘plar\n🧸 Kichkintoylar zonasi\n🏖️ Kinetik qum\n🎠 Karusellar", "en":"🎠 OUR ATTRACTIONS\n\n🛝 4-floor labyrinths\n🎪 Inflatable trampolines\n🤸 Professional trampolines\n🎢 Slides\n🛝 17-meter slide\n🧗 Rope adventure\n🎯 Air cannons\n🧸 Toddler zone\n🏖️ Kinetic sand\n🎠 Carousels"}
+    await update.effective_message.reply_text(texts.get(lang,texts["ru"]), reply_markup=menu(lang))
+
 
 async def funlandia(update: Update, lang):
-    text = "🎡 FUNLANDIA\n\nTanlang:" if lang == "uz" else "🎡 FUNLANDIA\n\nВыберите раздел:"
-    await update.effective_message.reply_text(text, reply_markup=funlandia_menu(lang))
+    texts={"ru":"🎡 FUNLANDIA\n\nВыберите раздел:","uz":"🎡 FUNLANDIA\n\nTanlang:","en":"🎡 FUNLANDIA\n\nChoose a section:"}
+    await update.effective_message.reply_text(texts.get(lang,texts["ru"]), reply_markup=funlandia_menu(lang))
+
 
 async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = context.user_data.get("lang", "ru")
-    context.user_data["birthday_step"] = 1
-    context.user_data["birthday"] = {}
-    text = (
-        "🎂 FUNLANDIA'DA TUG‘ILGAN KUN!\n\n"
-        "🎁 TUG‘ILGAN KUN EGASI UCHUN AKSIYA\n\n"
-        "Bayram bitta tanlangan zonada:\n🛝 Bolalar maydonchasi\n🤸 Batut zonasi\n\n"
-        "👧 5 bola — 450 000 so‘m\n👦 10 bola — 900 000 so‘m\n\n"
-        "🍽️ STOL BUYURTMA QILISH\n🪑 3 soatga stol — 200 000 so‘m\n"
-        "➕ Qo‘shimcha vaqt — har bir soat uchun 50 000 so‘m\n\n"
-        "🪑 O‘TIRISH ZONASINI TANLASH\n1️⃣ Zona 1\n2️⃣ Zona 2\n3️⃣ Zona 3\n\n"
-        "💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\n\n"
-        "Ariza qoldirish uchun tug‘ilgan kun egasining ismini yozing:"
-        if lang == "uz" else
-        "🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA!\n\n"
-        "🎁 АКЦИЯ ДЛЯ ИМЕНИННИКА\n\n"
-        "Празднование проходит в одной выбранной зоне:\n🛝 Детская площадка\n🤸 Батутная зона\n\n"
-        "👧 5 детей — 450 000 сум\n👦 10 детей — 900 000 сум\n\n"
-        "🍽️ ЗАКАЗ СТОЛА\n🪑 Стол на 3 часа — 200 000 сум\n"
-        "➕ Дополнительное время — 50 000 сум за каждый час\n\n"
-        "🪑 ВЫБОР ЗОНЫ ПОСАДКИ\n1️⃣ Зона 1\n2️⃣ Зона 2\n3️⃣ Зона 3\n\n"
-        "💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\n\n"
-        "Чтобы оставить заявку, напишите имя именинника:"
-    )
-    await update.effective_message.reply_text(text, reply_markup=menu(lang))
+    lang=context.user_data.get("lang","ru"); context.user_data["birthday_step"]=1; context.user_data["birthday"]={}
+    texts={
+      "ru":"🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA!\n\n🎁 АКЦИЯ ДЛЯ ИМЕНИННИКА\n\nПразднование проходит в одной выбранной зоне:\n🛝 Детская площадка\n🤸 Батутная зона\n\n👧 5 детей — 450 000 сум\n👦 10 детей — 900 000 сум\n\n🍽️ ЗАКАЗ СТОЛА\n🪑 Стол на 3 часа — 200 000 сум\n➕ Дополнительное время — 50 000 сум за каждый час\n\n🪑 ВЫБОР ЗОНЫ ПОСАДКИ\n1️⃣ Зона 1\n2️⃣ Зона 2\n3️⃣ Зона 3\n\n💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\n\nЧтобы оставить заявку, напишите имя именинника:",
+      "uz":"🎂 FUNLANDIA'DA TUG‘ILGAN KUN!\n\n🎁 TUG‘ILGAN KUN EGASI UCHUN AKSIYA\n\nBayram bitta tanlangan zonada:\n🛝 Bolalar maydonchasi\n🤸 Batut zonasi\n\n👧 5 bola — 450 000 so‘m\n👦 10 bola — 900 000 so‘m\n\n🍽️ STOL BUYURTMA QILISH\n🪑 3 soatga stol — 200 000 so‘m\n➕ Qo‘shimcha vaqt — har bir soat uchun 50 000 so‘m\n\n🪑 O‘TIRISH ZONASINI TANLASH\n1️⃣ Zona 1\n2️⃣ Zona 2\n3️⃣ Zona 3\n\n💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\n\nAriza qoldirish uchun tug‘ilgan kun egasining ismini yozing:",
+      "en":"🎂 BIRTHDAY AT FUNLANDIA!\n\n🎁 BIRTHDAY CHILD SPECIAL OFFER\n\nThe celebration takes place in one selected zone:\n🛝 Kids Playground\n🤸 Trampoline Zone\n\n👧 5 children — 450,000 UZS\n👦 10 children — 900,000 UZS\n\n🍽️ TABLE BOOKING\n🪑 Table for 3 hours — 200,000 UZS\n➕ Extra time — 50,000 UZS per hour\n\n🪑 SEATING ZONE\n1️⃣ Zone 1\n2️⃣ Zone 2\n3️⃣ Zone 3\n\n💰 A minimum advance payment of 100,000 UZS is required to confirm the booking.\n\nTo submit a request, write the birthday child’s name:"}
+    await update.effective_message.reply_text(texts[lang], reply_markup=menu(lang))
+
 
 async def september_promo(update: Update, context: ContextTypes.DEFAULT_TYPE, lang):
-    key = "promotion"
-    photos = load_photos()
-    file_ids = normalize_photo_list(photos.get(key))
-
+    photos=load_photos(); file_ids=normalize_photo_list(photos.get("promotion"))
+    title={"ru":"🎁 АКЦИЯ МЕСЯЦА","uz":"🎁 OY AKSIYASI","en":"🎁 PROMOTION"}.get(lang,"🎁 PROMOTION")
     if file_ids:
-        title = "🎁 АКЦИЯ МЕСЯЦА" if lang == "ru" else "🎁 OY AKSIYASI"
-        for index, file_id in enumerate(file_ids):
-            await update.effective_message.reply_photo(
-                photo=file_id,
-                caption=title if index == 0 else None,
-                reply_markup=menu(lang) if index == len(file_ids) - 1 else None
-            )
+        for index,file_id in enumerate(file_ids):
+            await update.effective_message.reply_photo(photo=file_id, caption=title if index==0 else None, reply_markup=menu(lang) if index==len(file_ids)-1 else None)
     else:
-        text = (
-            "🎁 АКЦИЯ МЕСЯЦА\n\n"
-            "Фото акции пока не загружены."
-            if lang == "ru" else
-            "🎁 OY AKSIYASI\n\n"
-            "Aksiya fotosuratlari hali yuklanmagan."
-        )
-        await update.effective_message.reply_text(text, reply_markup=menu(lang))
+        empty={"ru":"Фото акции пока не загружены.","uz":"Aksiya fotosuratlari hali yuklanmagan.","en":"Promotion photos have not been uploaded yet."}
+        await update.effective_message.reply_text(title+"\n\n"+empty.get(lang,empty["en"]), reply_markup=menu(lang))
 
 
 async def birthday_gallery(update: Update, lang):
-    """Show birthday-zone photos first, then the zone/booking buttons."""
-    intro = (
-        "🎂 FUNLANDIA'DA TUG‘ILGAN KUN!\n\n"
-        "🎈 Bayram zonalari fotosuratlari:\n"
-        "🪑 1️⃣ Zona 1\n"
-        "🪑 2️⃣ Zona 2\n"
-        "🪑 3️⃣ Zona 3"
-        if lang == "uz" else
-        "🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA!\n\n"
-        "🎈 Фотографии зон для празднования:\n"
-        "🪑 1️⃣ Зона 1\n"
-        "🪑 2️⃣ Зона 2\n"
-        "🪑 3️⃣ Зона 3"
-    )
-    await update.effective_message.reply_text(intro)
-
-    photos = load_photos()
-    zone_keys = (
-        ("birthday1", "🎈 Зона №1", "🎈 Zona №1"),
-        ("birthday2", "🎈 Зона №2", "🎈 Zona №2"),
-        ("birthday3", "🎈 Зона №3", "🎈 Zona №3"),
-    )
-
-    shown = 0
-    for key, title_ru, title_uz in zone_keys:
-        file_ids = normalize_photo_list(photos.get(key))
-        title = title_uz if lang == "uz" else title_ru
-
-        for index, file_id in enumerate(file_ids):
-            caption = title if index == 0 else None
-            await update.effective_message.reply_photo(
-                photo=file_id,
-                caption=caption
-            )
-            shown += 1
-
-    if shown == 0:
-        await update.effective_message.reply_text(
-            "📸 Фото зон пока не загружены. Ниже можно выбрать зону или оформить бронь."
-            if lang == "ru" else
-            "📸 Zona fotosuratlari hali yuklanmagan. Quyida zonani tanlashingiz yoki bron qilishingiz mumkin."
-        )
+    intros={"ru":"🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA!\n\n🎈 Фотографии зон для празднования:\n🪑 1️⃣ Зона 1\n🪑 2️⃣ Зона 2\n🪑 3️⃣ Зона 3", "uz":"🎂 FUNLANDIA'DA TUG‘ILGAN KUN!\n\n🎈 Bayram zonalari fotosuratlari:\n🪑 1️⃣ Zona 1\n🪑 2️⃣ Zona 2\n🪑 3️⃣ Zona 3", "en":"🎂 BIRTHDAY AT FUNLANDIA!\n\n🎈 Photos of our birthday zones:\n🪑 1️⃣ Zone 1\n🪑 2️⃣ Zone 2\n🪑 3️⃣ Zone 3"}
+    await update.effective_message.reply_text(intros.get(lang,intros["ru"]))
+    photos=load_photos()
+    zone_keys=(("birthday1","🎈 Зона №1","🎈 Zona №1"),("birthday2","🎈 Зона №2","🎈 Zona №2"),("birthday3","🎈 Зона №3","🎈 Zona №3"))
+    shown=0
+    for key,title_ru,title_uz in zone_keys:
+        title=title_ru if lang=="ru" else (title_uz if lang=="uz" else f"🎈 Zone №{key[-1]}")
+        for index,file_id in enumerate(normalize_photo_list(photos.get(key))):
+            await update.effective_message.reply_photo(photo=file_id,caption=title if index==0 else None); shown+=1
+    if shown==0:
+        no={"ru":"📸 Фото зон пока не загружены. Ниже можно выбрать зону или оформить бронь.","uz":"📸 Zona fotosuratlari hali yuklanmagan. Quyida zonani tanlashingiz yoki bron qilishingiz mumkin.","en":"📸 Zone photos have not been uploaded yet. You can choose a zone or start a booking below."}
+        await update.effective_message.reply_text(no.get(lang,no["ru"]))
     else:
-        await update.effective_message.reply_text(
-            "👇 Выберите нужную зону или сразу оформите бронирование:"
-            if lang == "ru" else
-            "👇 Kerakli zonani tanlang yoki bronni boshlang:"
-        )
-
-    # Keep the existing working zone buttons and booking button.
-    await update.effective_message.reply_text(
-        "👇",
-        reply_markup=birthday_menu(lang)
-    )
+        choose={"ru":"👇 Выберите нужную зону или сразу оформите бронирование:","uz":"👇 Kerakli zonani tanlang yoki bronni boshlang:","en":"👇 Choose a zone or start your booking:"}
+        await update.effective_message.reply_text(choose.get(lang,choose["ru"]))
+    await update.effective_message.reply_text("👇",reply_markup=birthday_menu(lang))
 
 async def send_photo_key(update: Update, context: ContextTypes.DEFAULT_TYPE, key):
     lang = context.user_data.get("lang", "ru")
     photos = load_photos()
     file_ids = normalize_photo_list(photos.get(key))
-    title = PHOTO_TITLES_UZ.get(key, key) if lang == "uz" else PHOTO_KEYS.get(key, key)
+    title = PHOTO_TITLES_UZ.get(key, key) if lang == "uz" else (PHOTO_TITLES_EN.get(key, key) if lang == "en" else PHOTO_KEYS.get(key, key))
     if not file_ids:
         await update.effective_message.reply_text(
             f"📸 {title}\n\nФото пока не подключено. Администратор добавит его после загрузки."
@@ -687,192 +526,101 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def birthday_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Step-by-step birthday booking form."""
-    lang = context.user_data.get("lang", "ru")
-    step = context.user_data.get("birthday_step", 1)
-    value = (update.effective_message.text or "").strip()
-    data = context.user_data.setdefault("birthday", {})
-
-    # The current step is the field we are receiving.
-    fields_ru = [
-        ("name", "🎂 Как зовут именинника?"),
-        ("age", "🎈 Сколько лет исполнится имениннику?"),
-        ("date", "📅 На какую дату планируете праздник?"),
-        ("children", "👧👦 Сколько будет детей?"),
-        ("time", "🕐 На какое время планируете праздник?"),
-        ("phone", "📞 Оставьте номер телефона для связи:"),
-        ("seat_zone", "🪑 Какую зону посадки выбираете: Зона 1, Зона 2 или Зона 3?"),
-        ("extras", "🎁 Дополнительные услуги\n\n🎈 Оформление шарами\n🫧 Мыльные пузыри\n🎭 Оформление стены с героями\n\nНапишите, что хотите добавить: «шары», «мыльные пузыри», «стена с героями», несколько услуг сразу или «без доп. услуг»."),
-        ("advance", "💰 Аванс — минимум 100 000 сум после подтверждения заявки. Готовы внести аванс после подтверждения? Напишите: да / нет."),
-    ]
-    fields_uz = [
-        ("name", "🎂 Ismalochining ismi nima?"),
-        ("age", "🎈 Ismalochining yoshi nechaga to‘ladi?"),
-        ("date", "📅 Bayram qaysi sanada bo‘ladi?"),
-        ("children", "👧👦 Nechta bola bo‘ladi?"),
-        ("time", "🕐 Bayram uchun qaysi vaqt qulay?"),
-        ("phone", "📞 Bog‘lanish uchun telefon raqamingizni yozing:"),
-        ("seat_zone", "🪑 Qaysi o‘tirish zonasini tanlaysiz: 1-zona, 2-zona yoki 3-zona?"),
-        ("extras", "🎁 Qo‘shimcha xizmatlar\n\n🎈 Sharlar bilan bezatish\n🫧 Sovun pufaklari\n🎭 Qahramonlar bilan devor bezagi\n\nNimani xohlashingizni yozing: «sharlar», «sovun pufaklari», «qahramonlar bilan devor», bir nechta xizmat yoki «qo‘shimcha xizmatlarsiz»."),
-        ("advance", "💰 Avans — ariza tasdiqlangandan keyin kamida 100 000 so‘m. Tasdiqlangandan keyin avans to‘lashga tayyormisiz? Ha / yo‘q."),
-    ]
-
-    fields = fields_uz if lang == "uz" else fields_ru
-
+    lang=context.user_data.get("lang","ru"); step=context.user_data.get("birthday_step",1); value=(update.effective_message.text or "").strip(); data=context.user_data.setdefault("birthday",{})
+    fields={
+      "ru":[("name","🎂 Как зовут именинника?"),("age","🎈 Сколько лет исполнится имениннику?"),("date","📅 На какую дату планируете праздник?"),("children","👧👦 Сколько будет детей?"),("time","🕐 На какое время планируете праздник?"),("phone","📞 Оставьте номер телефона для связи:"),("seat_zone","🪑 Какую зону посадки выбираете: Зона 1, Зона 2 или Зона 3?"),("extras","🎁 Дополнительные услуги\n\n🎈 Оформление шарами\n🫧 Мыльные пузыри\n🎭 Оформление стены с героями\n\nНапишите, что хотите добавить или «без доп. услуг»."),("advance","💰 Аванс — минимум 100 000 сум после подтверждения заявки. Готовы внести аванс после подтверждения? Напишите: да / нет.")],
+      "uz":[("name","🎂 Tug‘ilgan kun egasining ismi nima?"),("age","🎈 Tug‘ilgan kun egasining yoshi nechaga to‘ladi?"),("date","📅 Bayram qaysi sanada bo‘ladi?"),("children","👧👦 Nechta bola bo‘ladi?"),("time","🕐 Bayram uchun qaysi vaqt qulay?"),("phone","📞 Bog‘lanish uchun telefon raqamingizni yozing:"),("seat_zone","🪑 Qaysi o‘tirish zonasini tanlaysiz: 1-zona, 2-zona yoki 3-zona?"),("extras","🎁 Qo‘shimcha xizmatlar\n\n🎈 Sharlar bilan bezatish\n🫧 Sovun pufaklari\n🎭 Qahramonlar bilan devor bezagi\n\nNimani qo‘shishni xohlaysiz yoki «qo‘shimcha xizmatlarsiz» deb yozing."),("advance","💰 Avans — ariza tasdiqlangandan keyin kamida 100 000 so‘m. Tasdiqlangandan keyin avans to‘lashga tayyormisiz? Ha / yo‘q.")],
+      "en":[("name","🎂 What is the birthday child’s name?"),("age","🎈 How old will the birthday child be?"),("date","📅 What date are you planning the celebration?"),("children","👧👦 How many children will attend?"),("time","🕐 What time would you like to celebrate?"),("phone","📞 Please leave a phone number for contact:"),("seat_zone","🪑 Which seating zone would you like: Zone 1, Zone 2 or Zone 3?"),("extras","🎁 Additional services\n\n🎈 Balloon decoration\n🫧 Soap bubbles\n🎭 Character wall decoration\n\nTell us what you would like to add, or write “no extras”."),("advance","💰 A minimum advance payment of 100,000 UZS is required after the request is confirmed. Are you ready to pay the advance after confirmation? Yes / no.")]
+    }[lang]
     if not value:
-        await update.effective_message.reply_text(
-            "Пожалуйста, напишите ответ."
-            if lang == "ru" else
-            "Iltimos, javobingizni yozing."
-        )
-        return
-
-    key, next_prompt = fields[step - 1]
-    data[key] = value
-
-    if step < len(fields):
-        context.user_data["birthday_step"] = step + 1
-        await update.effective_message.reply_text(next_prompt)
-        return
-
-    # All fields collected: show a confirmation summary instead of sending
-    # immediately to the administrator.
-    context.user_data["birthday_step"] = 10
-    summary = (
-        "🎂 ПРОВЕРЬТЕ ЗАЯВКУ НА ДЕНЬ РОЖДЕНИЯ\n\n"
-        f"👤 Именинник: {data['name']}\n"
-        f"🎈 Возраст: {data['age']}\n"
-        f"📅 Дата: {data['date']}\n"
-        f"👧👦 Детей: {data['children']}\n"
-        f"🕐 Время: {data['time']}\n"
-        f"📞 Телефон: {data['phone']}\n"
-        f"🪑 Зона посадки: {data['seat_zone']}\n"
-        f"🎁 Дополнительные услуги: {data['extras']}\n"
-        f"💰 Аванс: {data['advance']}\n\n"
-        "Нажмите «Подтвердить заявку», чтобы отправить её администратору."
-        if lang == "ru" else
-        "🎂 TUG‘ILGAN KUN BRONI ARIZASINI TEKSHIRING\n\n"
-        f"👤 Ismalochi: {data['name']}\n"
-        f"🎈 Yosh: {data['age']}\n"
-        f"📅 Sana: {data['date']}\n"
-        f"👧👦 Bolalar: {data['children']}\n"
-        f"🕐 Vaqt: {data['time']}\n"
-        f"📞 Telefon: {data['phone']}\n"
-        f"🪑 O‘tirish zonasi: {data['seat_zone']}\n"
-        f"🎁 Qo‘shimcha xizmatlar: {data['extras']}\n"
-        f"💰 Avans: {data['advance']}\n\n"
-        "Arizani administratorga yuborish uchun «Arizani tasdiqlash» tugmasini bosing."
-    )
-    keyboard = (
-        ReplyKeyboardMarkup(two_col([["✅ Подтвердить заявку", "✏️ Изменить"], ["🔙 Назад"]]), resize_keyboard=True)
-        if lang == "ru" else
-        ReplyKeyboardMarkup(two_col([["✅ Arizani tasdiqlash", "✏️ O‘zgartirish"], ["🔙 Orqaga"]]), resize_keyboard=True)
-    )
-    await update.effective_message.reply_text(summary, reply_markup=keyboard)
-
+        await update.effective_message.reply_text({"ru":"Пожалуйста, напишите ответ.","uz":"Iltimos, javobingizni yozing.","en":"Please enter your answer."}[lang]); return
+    key,next_prompt=fields[step-1]; data[key]=value
+    if step<len(fields):
+        context.user_data["birthday_step"]=step+1; await update.effective_message.reply_text(next_prompt); return
+    context.user_data["birthday_step"]=10
+    if lang=="ru":
+        summary=("🎂 ПРОВЕРЬТЕ ЗАЯВКУ НА ДЕНЬ РОЖДЕНИЯ\n\n" f"👤 Именинник: {data['name']}\n🎈 Возраст: {data['age']}\n📅 Дата: {data['date']}\n👧👦 Детей: {data['children']}\n🕐 Время: {data['time']}\n📞 Телефон: {data['phone']}\n🪑 Зона посадки: {data['seat_zone']}\n🎁 Дополнительные услуги: {data['extras']}\n💰 Аванс: {data['advance']}\n\nНажмите «Подтвердить заявку», чтобы отправить её администратору.")
+        kb=[["✅ Подтвердить заявку","✏️ Изменить"],["🔙 Назад"]]
+    elif lang=="uz":
+        summary=("🎂 TUG‘ILGAN KUN BRONI ARIZASINI TEKSHIRING\n\n" f"👤 Tug‘ilgan kun egasi: {data['name']}\n🎈 Yosh: {data['age']}\n📅 Sana: {data['date']}\n👧👦 Bolalar: {data['children']}\n🕐 Vaqt: {data['time']}\n📞 Telefon: {data['phone']}\n🪑 O‘tirish zonasi: {data['seat_zone']}\n🎁 Qo‘shimcha xizmatlar: {data['extras']}\n💰 Avans: {data['advance']}\n\nArizani administratorga yuborish uchun «Arizani tasdiqlash» tugmasini bosing.")
+        kb=[["✅ Arizani tasdiqlash","✏️ O‘zgartirish"],["🔙 Orqaga"]]
+    else:
+        summary=("🎂 CHECK YOUR BIRTHDAY BOOKING\n\n" f"👤 Birthday child: {data['name']}\n🎈 Age: {data['age']}\n📅 Date: {data['date']}\n👧👦 Children: {data['children']}\n🕐 Time: {data['time']}\n📞 Phone: {data['phone']}\n🪑 Seating zone: {data['seat_zone']}\n🎁 Additional services: {data['extras']}\n💰 Advance: {data['advance']}\n\nPress “Confirm request” to send it to the administrator.")
+        kb=[["✅ Confirm request","✏️ Edit"],["🔙 Back"]]
+    await update.effective_message.reply_text(summary,reply_markup=ReplyKeyboardMarkup(two_col(kb),resize_keyboard=True))
 
 async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send the completed birthday booking to the administrator."""
-    lang = context.user_data.get("lang", "ru")
-    data = context.user_data.get("birthday", {})
-    username = update.effective_user.username or "нет username"
-
-    msg = (
-        "🎂 НОВАЯ ЗАЯВКА FUNLANDIA\n\n"
-        f"👤 Именинник: {data.get('name', '')}\n"
-        f"🎈 Возраст: {data.get('age', '')}\n"
-        f"📅 Дата: {data.get('date', '')}\n"
-        f"👧👦 Детей: {data.get('children', '')}\n"
-        f"🕐 Время: {data.get('time', '')}\n"
-        f"📞 Телефон: {data.get('phone', '')}\n"
-        f"🪑 Зона посадки: {data.get('seat_zone', '')}\n"
-        f"🎁 Дополнительные услуги: {data.get('extras', '')}\n"
-        f"💰 Аванс: {data.get('advance', '')}\n"
-        f"Telegram: @{username}"
-    )
-
+    lang=context.user_data.get("lang","ru"); data=context.user_data.get("birthday",{}); username=update.effective_user.username or "нет username"
+    if lang=="en":
+        msg=("🎂 NEW FUNLANDIA BIRTHDAY REQUEST\n\n" f"👤 Birthday child: {data.get('name','')}\n🎈 Age: {data.get('age','')}\n📅 Date: {data.get('date','')}\n👧👦 Children: {data.get('children','')}\n🕐 Time: {data.get('time','')}\n📞 Phone: {data.get('phone','')}\n🪑 Seating zone: {data.get('seat_zone','')}\n🎁 Additional services: {data.get('extras','')}\n💰 Advance: {data.get('advance','')}\nTelegram: @{username}")
+    else:
+        msg=("🎂 НОВАЯ ЗАЯВКА FUNLANDIA\n\n" f"👤 Именинник: {data.get('name','')}\n🎈 Возраст: {data.get('age','')}\n📅 Дата: {data.get('date','')}\n👧👦 Детей: {data.get('children','')}\n🕐 Время: {data.get('time','')}\n📞 Телефон: {data.get('phone','')}\n🪑 Зона посадки: {data.get('seat_zone','')}\n🎁 Дополнительные услуги: {data.get('extras','')}\n💰 Аванс: {data.get('advance','')}\nTelegram: @{username}")
     if ADMIN_CHAT_ID:
-        try:
-            await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=msg)
-        except Exception as exc:
-            print(f"Birthday admin notification error: {exc}")
-
-    context.user_data.clear()
-    context.user_data["lang"] = lang
-
-    await update.effective_message.reply_text(
-        "✅ Arizangiz administratorga yuborildi!\n\n"
-        "💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\n"
-        "Administrator FUNLANDIA siz bilan bog‘lanadi."
-        if lang == "uz" else
-        "✅ Заявка отправлена администратору!\n\n"
-        "💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\n"
-        "Администратор FUNLANDIA свяжется с вами.",
-        reply_markup=menu(lang)
-    )
-
+        try: await context.bot.send_message(chat_id=ADMIN_CHAT_ID,text=msg)
+        except Exception as exc: print(f"Birthday admin notification error: {exc}")
+    context.user_data.clear(); context.user_data["lang"]=lang
+    done={"ru":"✅ Заявка отправлена администратору!\n\n💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\nАдминистратор FUNLANDIA свяжется с вами.","uz":"✅ Arizangiz administratorga yuborildi!\n\n💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\nAdministrator FUNLANDIA siz bilan bog‘lanadi.","en":"✅ Your request has been sent to the administrator!\n\n💰 A minimum advance payment of 100,000 UZS is required to confirm the booking.\nFUNLANDIA administrator will contact you."}
+    await update.effective_message.reply_text(done[lang],reply_markup=menu(lang))
 
 async def birthday_confirm_or_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = context.user_data.get("lang", "ru")
-    text = (update.effective_message.text or "").strip()
-
-    if text in ("✏️ Изменить", "✏️ O‘zgartirish"):
-        context.user_data["birthday_step"] = 1
-        context.user_data["birthday"] = {}
-        await update.effective_message.reply_text(
-            "Начнём заявку заново. 🎂\n\nКак зовут именинника?"
-            if lang == "ru" else
-            "Arizani boshidan boshlaymiz. 🎂\n\nIsmalochining ismi nima?"
-        )
-        return True
-
-    if text in ("✅ Подтвердить заявку", "✅ Arizani tasdiqlash"):
-        await finish_birthday(update, context)
-        return True
-
+    lang=context.user_data.get("lang","ru"); text=(update.effective_message.text or "").strip()
+    edit={"ru":"✏️ Изменить","uz":"✏️ O‘zgartirish","en":"✏️ Edit"}; confirm={"ru":"✅ Подтвердить заявку","uz":"✅ Arizani tasdiqlash","en":"✅ Confirm request"}
+    if text==edit[lang]:
+        context.user_data["birthday_step"]=1; context.user_data["birthday"]={}
+        await update.effective_message.reply_text({"ru":"Начнём заявку заново. 🎂\n\nКак зовут именинника?","uz":"Arizani boshidan boshlaymiz. 🎂\n\nTug‘ilgan kun egasining ismi nima?","en":"Let’s start the request again. 🎂\n\nWhat is the birthday child’s name?"}[lang]); return True
+    if text==confirm[lang]: await finish_birthday(update,context); return True
     return False
 
 async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.effective_message.text or "").strip()
     lang = context.user_data.get("lang", "ru")
 
+    # Telegram/user input can contain different Unicode apostrophe characters.
+    # Normalize only for menu matching; displayed texts stay unchanged.
+    text_match = (text.replace("’", "'").replace("‘", "'").replace("ʻ", "'").replace("ʼ", "'")
+                  .replace("`", "'"))
+
     if text in ("🇺🇿 O‘zbekcha", "UZ O‘zbekcha"):
         return await uz_start(update, context)
+    if text == "🇬🇧 English":
+        context.args = ["en"]
+        return await start(update, context)
     if text == "🇷🇺 Русский":
+        context.args = ["ru"]
         return await start(update, context)
 
-    if text in ("🔙 Назад", "🔙 Orqaga"):
+    if text in ("🔙 Назад", "🔙 Orqaga", "🔙 Back"):
         context.user_data.pop("birthday_step", None)
         context.user_data.pop("birthday", None)
         return await update.effective_message.reply_text(
-            "Главное меню:" if lang == "ru" else "Asosiy menyu:",
+            "Главное меню:" if lang == "ru" else ("Asosiy menyu:" if lang == "uz" else "Main menu:" ),
             reply_markup=menu(lang)
         )
 
-    if text in ("📸 ФОТО-ГИД", "📸 FOTO-GID"):
+    if text in ("📸 ФОТО-ГИД", "📸 FOTO-GID", "📸 PHOTO GUIDE"):
         return await funlandia(update, lang)
 
-    if text in ("🎁 Акция месяца", "🎁 Aksiya oyi"):
+    if text in ("🎁 Акция месяца", "🎁 Aksiya oyi", "🎁 Promotion"):
         return await september_promo(update, context, lang)
 
-    if text in ("🤖 Авто-секретарь", "🤖 Avto-kotib"):
+    if text in ("🤖 Авто-секретарь", "🤖 Avto-kotib", "🤖 Auto Secretary"):
         return await secretary(update, context)
 
-    if text in ("🎟️ Цены", "🎟️ Narxlar"):
+    if text in ("🎟️ Цены", "🎟️ Narxlar", "🎟️ Prices"):
         return await prices(update, lang)
-    if text in ("🎂 День рождения", "🎂 Tug‘ilgan kun"):
+    if text in ("🎂 День рождения", "🎂 Tug‘ilgan kun", "🎂 Birthday"):
         return await birthday_gallery(update, lang)
-    if text in ("🎉 Забронировать день рождения", "🎉 Tug‘ilgan kunni bron qilish"):
+    if text in ("🎉 Забронировать день рождения", "🎉 Tug‘ilgan kunni bron qilish", "🎉 Book a Birthday"):
         return await birthday_gallery(update, lang)
-    if text in ("📝 Забронировать день рождения", "📝 Tug‘ilgan kunni bron qilish"):
+    if text in ("📝 Забронировать день рождения", "📝 Tug‘ilgan kunni bron qilish", "📝 Book a Birthday"):
         return await birthday(update, context)
-    if text in ("🎠 Развлечения", "🎠 Ko‘ngilochar"):
+    if text in ("🎠 Развлечения", "🎠 Ko‘ngilochar", "🎠 Attractions"):
         return await attractions(update, lang)
-    if text in ("📍 Адрес", "📍 Manzil"):
+    if text in ("📍 Адрес", "📍 Manzil", "📍 Address"):
         return await simple(update, lang, "address")
-    if text in ("🕐 Время работы", "🕐 Ish vaqti"):
+    if text in ("🕐 Время работы", "🕐 Ish vaqti", "🕐 Opening Hours"):
         return await hours(update, lang)
-    if text in ("📞 Контакт", "📞 Kontakt", "📞 Контакты", "📞 Aloqa"):
+    if text in ("📞 Контакт", "📞 Kontakt", "📞 Контакты", "📞 Aloqa", "📞 Contact"):
         return await contacts(update, lang)
     if text in ("📸 Instagram",):
         return await simple(update, lang, "instagram")
@@ -896,12 +644,24 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎮 O'yin avtomatlari": "arcade",
         "🏎️ Avtodrom": "autodrome",
         "🪢 Канатная дорога": "ninja",
+        "🪢 Kanat yo‘li": "ninja",
+        "🚪 FUNLANDIA Entrance": "entrance",
+        "🎟️ Cashier": "cashier",
+        "🤸 Trampolines": "trampoline",
+        "🛝 Kids Playground": "playground",
+        "🎠 Carousels": "carousel",
+        "🎮 Arcade Games": "arcade",
+        "🏎️ Bumper Cars": "autodrome",
+        "🪢 Rope Course": "ninja",
         "🎈 Зона №1": "birthday1",
         "🎈 Зона №2": "birthday2",
         "🎈 Зона №3": "birthday3",
         "🎈 Zona №1": "birthday1",
         "🎈 Zona №2": "birthday2",
         "🎈 Zona №3": "birthday3",
+        "🎈 Zone №1": "birthday1",
+        "🎈 Zone №2": "birthday2",
+        "🎈 Zone №3": "birthday3",
     }
     if text in photo_map:
         return await send_photo_key(update, context, photo_map[text])
@@ -959,16 +719,14 @@ async def business_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🇷🇺 Русский",
                 url="https://t.me/Funlandiauzbot?start=ru"
             ),
-            InlineKeyboardButton(
-                "🇺🇿 O‘zbekcha",
-                url="https://t.me/Funlandiauzbot?start=uz"
-            ),
+            InlineKeyboardButton("🇺🇿 O‘zbekcha", url="https://t.me/Funlandiauzbot?start=uz"),
+            InlineKeyboardButton("🇬🇧 English", url="https://t.me/Funlandiauzbot?start=en"),
         ]
     ])
 
     await message.reply_text(
         "👋 Здравствуйте! Выберите язык / Tilni tanlang:\n\n"
-        "После выбора откроется бот FUNLANDIA на выбранном языке.",
+        "После выбора откроется бот FUNLANDIA на выбранном языке. / After selection, FUNLANDIA will open in your language.",
         reply_markup=keyboard,
     )
 
