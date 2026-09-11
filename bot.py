@@ -73,7 +73,8 @@ def menu(lang="ru"):
     if lang == "uz":
         return ReplyKeyboardMarkup([
             ["🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA", "🎟️ Narxlar"],
-            ["🎁 Aksiya oyi", "🎠 Ko‘ngilochar"],
+            ["🤖 Avto-kotib", "🎁 Aksiya oyi"],
+            ["🎠 Ko‘ngilochar"],
             ["📍 Manzil"],
             ["🎉 Tug‘ilgan kunni bron qilish"],
             ["🕐 Ish vaqti", "📞 Kontakt"],
@@ -82,7 +83,8 @@ def menu(lang="ru"):
         ], resize_keyboard=True)
     return ReplyKeyboardMarkup([
         ["🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA", "🎟️ Цены"],
-        ["🎁 Акция месяца", "🎠 Развлечения"],
+        ["🤖 Авто-секретарь", "🎁 Акция месяца"],
+        ["🎠 Развлечения"],
         ["📍 Адрес"],
         ["🎉 Забронировать день рождения"],
         ["🕐 Время работы", "📞 Контакт"],
@@ -145,6 +147,139 @@ async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Kerakli bo‘limni tanlang 👇",
         reply_markup=menu("uz")
     )
+
+async def secretary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data.get("lang", "ru")
+    text = (
+        "🤖 AVTO-KOTIB FUNLANDIA\n\n"
+        "Men sizga yordam beraman:\n"
+        "💰 narxlar\n"
+        "🎂 tug‘ilgan kun va bron\n"
+        "🕐 ish vaqti va sanitariya kuni\n"
+        "📍 manzil\n"
+        "📞 telefon\n"
+        "📸 Instagram\n"
+        "📱 Telegram\n\n"
+        "Savolingizni yozing — kerakli ma’lumotni beraman."
+        if lang == "uz" else
+        "🤖 АВТО-СЕКРЕТАРЬ FUNLANDIA\n\n"
+        "Я помогу вам узнать:\n"
+        "💰 цены\n"
+        "🎂 день рождения и бронирование\n"
+        "🕐 график работы и санитарный день\n"
+        "📍 адрес\n"
+        "📞 телефон\n"
+        "📸 Instagram\n"
+        "📱 Telegram\n\n"
+        "Напишите свой вопрос — я постараюсь сразу ответить."
+    )
+    await update.message.reply_text(text, reply_markup=menu(lang))
+
+
+async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = context.user_data.get("lang", "ru")
+    question = (update.message.text or "").strip().lower()
+
+    price_words = ("цен", "стоим", "сколько", "price", "narx", "so'm", "сум")
+    birthday_words = ("день рождения", "день рожд", "birthday", "tug‘ilgan", "tugilgan", "брон", "забронировать")
+    hours_words = ("график", "время работы", "работаете", "открыт", "закрыт", "иш ваqти", "ish vaqti", "когда работает")
+    monday_words = ("понедель", "санитар", "санитарный", "dushanba", "sanitariya")
+    address_words = ("адрес", "где находит", "где вы", "манзил", "manzil")
+    phone_words = ("телефон", "номер", "позвон", "контакт", "телеграм", "telegram", "instagram", "инстаграм")
+    playground_age_words = ("возраст площадки", "возраст детской площадки", "сколько лет на площадку", "с какого возраста на площадку", "площадка с какого возраста",
+                            "yosh", "maydoncha necha yosh", "maydonchaga necha yoshdan", "bolalar maydonchasi yosh")
+    trampoline_age_words = ("возраст батута", "возраст батут", "с какого возраста батут", "батут с какого возраста", "на батут с какого возраста",
+                            "batut necha yosh", "batutga necha yoshdan", "batut yoshi")
+    age_general_words = ("возраст", "сколько лет", "с какого возраста", "неполный год", "1 год", "7 лет", "16 лет", "yoshdan", "necha yosh")
+
+    if any(word in question for word in price_words):
+        return await prices(update, lang)
+
+    if any(word in question for word in playground_age_words):
+        text = (
+            "🛝 BOLALAR MAYDONCHASI\n\n"
+            "👶 1 yoshgacha — bepul.\n"
+            "👧 1 yoshdan 16 yoshgacha — kirish pullik.\n"
+            "🎉 Bolalar xavfsizlik qoidalariga rioya qilishlari kerak."
+            if lang == "uz" else
+            "🛝 ДЕТСКАЯ ПЛОЩАДКА\n\n"
+            "👶 До 1 года — бесплатно.\n"
+            "👧 От 1 года до 16 лет — вход платный.\n"
+            "🎉 Дети должны соблюдать правила безопасности."
+        )
+        return await update.message.reply_text(text, reply_markup=menu(lang))
+
+    if any(word in question for word in trampoline_age_words):
+        text = (
+            "🤸 БАТУТ ЗОНАСИ\n\n"
+            "👧 Батут зонасига 7 yoshdan boshlab bolalar qo‘yiladi.\n"
+            "👨‍👩‍👧 7 yoshdan boshlab bola ota-ona yoki katta yoshli hamroh nazoratida bo‘lishi kerak."
+            if lang == "uz" else
+            "🤸 БАТУТНАЯ ЗОНА\n\n"
+            "👧 На батутную зону допускаются дети от 7 лет.\n"
+            "👨‍👩‍👧 Ребёнок должен находиться под присмотром родителей или сопровождающего взрослого."
+        )
+        return await update.message.reply_text(text, reply_markup=menu(lang))
+
+    if any(word in question for word in age_general_words):
+        text = (
+            "👶 1 yoshgacha — bolalar maydonchasiga kirish bepul.\n"
+            "🛝 1 yoshdan 16 yoshgacha — bolalar maydonchasiga kirish pullik.\n"
+            "🤸 Batut zonasi — 7 yoshdan boshlab va ota-ona yoki katta yoshli hamroh nazoratida."
+            if lang == "uz" else
+            "👶 До 1 года — детская площадка бесплатно.\n"
+            "🛝 От 1 года до 16 лет — вход на детскую площадку платный.\n"
+            "🤸 Батутная зона — с 7 лет и под присмотром родителей или сопровождающего взрослого."
+        )
+        return await update.message.reply_text(text, reply_markup=menu(lang))
+
+    if any(word in question for word in birthday_words):
+        return await birthday_gallery(update, lang)
+
+    if any(word in question for word in monday_words):
+        text = (
+            "🧹 Har dushanba — 14:00 gacha sanitariya kuni.\n"
+            "🎉 Sizni 14:00 dan 22:00 gacha kutamiz."
+            if lang == "uz" else
+            "🧹 Каждый понедельник — санитарный день до 14:00.\n"
+            "🎉 Ждём вас с 14:00 до 22:00."
+        )
+        return await update.message.reply_text(text, reply_markup=menu(lang))
+
+    if any(word in question for word in hours_words):
+        return await hours(update, lang)
+
+    if any(word in question for word in address_words):
+        return await simple(update, lang, "address")
+
+    if any(word in question for word in phone_words):
+        return await contacts(update, lang)
+
+    # Anything outside the known FAQ is passed to the administrator.
+    username = update.effective_user.username
+    display_name = update.effective_user.full_name or "Без имени"
+    user_ref = f"@{username}" if username else "без username"
+    admin_text = (
+        "🤖 АВТО-СЕКРЕТАРЬ — НОВЫЙ СЛОЖНЫЙ ВОПРОС\n\n"
+        f"Клиент: {display_name}\n"
+        f"Telegram: {user_ref}\n"
+        f"Язык: {'UZ' if lang == 'uz' else 'RU'}\n\n"
+        f"Вопрос:\n{update.message.text}"
+    )
+
+    if ADMIN_CHAT_ID:
+        try:
+            await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_text)
+        except Exception as exc:
+            print(f"Admin notification error: {exc}")
+
+    await update.message.reply_text(
+        "Savolingizni administratorga yubordim. Tez orada siz bilan bog‘lanishadi."
+        if lang == "uz" else
+        "Я передал ваш вопрос администратору FUNLANDIA. Вам ответят в ближайшее время.",
+        reply_markup=menu(lang)
+    )
+
 
 async def prices(update: Update, lang):
     if lang == "uz":
@@ -354,79 +489,6 @@ async def send_photo_key(update: Update, context: ContextTypes.DEFAULT_TYPE, key
             reply_markup=reply_markup if index == len(file_ids) - 1 else None
         )
 
-async def deletephoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update):
-        return
-
-    args = context.args
-    if len(args) != 2:
-        await update.message.reply_text(
-            "Использование:\n"
-            "/deletephoto playground 1\n\n"
-            "Удаляет указанное фото из выбранного раздела."
-        )
-        return
-
-    key = args[0]
-    try:
-        index = int(args[1])
-    except ValueError:
-        await update.message.reply_text("Номер фото должен быть числом: 1, 2, 3...")
-        return
-
-    if key not in PHOTO_KEYS:
-        await update.message.reply_text(
-            "Неизвестный раздел.\n\nДоступные ключи:\n" +
-            "\n".join(f"/deletephoto {k} 1" for k in PHOTO_KEYS)
-        )
-        return
-
-    photos = load_photos()
-    file_ids = normalize_photo_list(photos.get(key))
-
-    if index < 1 or index > len(file_ids):
-        await update.message.reply_text(
-            f"Для «{PHOTO_KEYS[key]}» сейчас сохранено {len(file_ids)} фото."
-        )
-        return
-
-    file_ids.pop(index - 1)
-    photos[key] = file_ids
-    save_photos(photos)
-
-    await update.message.reply_text(
-        f"🗑️ Фото №{index} удалено из «{PHOTO_KEYS[key]}».\n"
-        f"Осталось фото: {len(file_ids)}."
-    )
-
-
-async def clearphotos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update):
-        return
-
-    args = context.args
-    if len(args) != 1 or args[0] not in PHOTO_KEYS:
-        await update.message.reply_text(
-            "Использование:\n"
-            "/clearphotos playground\n\n"
-            "Удаляет ВСЕ фото только из выбранного раздела.\n\n"
-            "Доступные разделы:\n" +
-            "\n".join(f"/clearphotos {k}" for k in PHOTO_KEYS)
-        )
-        return
-
-    key = args[0]
-    photos = load_photos()
-    old_count = len(normalize_photo_list(photos.get(key)))
-    photos[key] = []
-    save_photos(photos)
-
-    await update.message.reply_text(
-        f"🗑️ Раздел «{PHOTO_KEYS[key]}» очищен.\n"
-        f"Удалено фото: {old_count}."
-    )
-
-
 async def setphoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         return
@@ -589,6 +651,9 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in ("🎁 Акция месяца", "🎁 Aksiya oyi"):
         return await september_promo(update, context, lang)
 
+    if text in ("🤖 Авто-секретарь", "🤖 Avto-kotib"):
+        return await secretary(update, context)
+
     if text in ("🎟️ Цены", "🎟️ Narxlar"):
         return await prices(update, lang)
     if text in ("🎂 День рождения", "🎂 Tug‘ilgan kun"):
@@ -642,11 +707,7 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("birthday_step"):
         return await birthday_form(update, context)
 
-    await update.message.reply_text(
-        "😊 Menyudan kerakli bo‘limni tanlang." if lang == "uz" else
-        "😊 Пожалуйста, выберите нужный раздел.",
-        reply_markup=menu(lang)
-    )
+    return await secretary_answer(update, context)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     # Keep the bot running even if one user message causes an exception.
@@ -661,8 +722,6 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setphoto", setphoto))
     app.add_handler(CommandHandler("setpromo", setpromo))
-    app.add_handler(CommandHandler("deletephoto", deletephoto))
-    app.add_handler(CommandHandler("clearphotos", clearphotos))
     app.add_handler(CommandHandler("donephoto", donephoto))
     app.add_handler(MessageHandler(filters.PHOTO, receive_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
