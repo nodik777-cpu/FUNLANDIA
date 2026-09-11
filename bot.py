@@ -1,7 +1,7 @@
 import os
 import json
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, BusinessConnectionHandler, TypeHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, BusinessConnectionHandler, filters
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
@@ -136,8 +136,23 @@ def two_col(rows):
     return out
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # /start ru or /start uz can be used by the Business language buttons.
+    requested_lang = context.args[0].lower() if context.args else "ru"
+    lang = "uz" if requested_lang == "uz" else "ru"
     context.user_data.clear()
-    context.user_data["lang"] = "ru"
+    context.user_data["lang"] = lang
+
+    if lang == "uz":
+        await update.effective_message.reply_text(
+            "🎉 FUNLANDIA'GA XUSH KELIBSIZ! 🎉\n\n"
+            "Bu yerda bolalar o‘ynaydi, quvonadi va yorqin taassurotlar oladi, "
+            "ota-onalar esa maroqli dam oladi! ❤️\n\n"
+            "🛝 Labirintlar • 🤸 Batutlar • 🎢 Tepaliklar • 🎯 Pnevmatik to‘plar • 🧗 Tarzanka\n\n"
+            "Kerakli bo‘limni tanlang 👇",
+            reply_markup=menu("uz")
+        )
+        return
+
     await update.effective_message.reply_text(
         "🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA! 🎉\n\n"
         "Место, где дети играют, веселятся и получают яркие эмоции, "
@@ -926,121 +941,37 @@ async def business_connection(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def business_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Telegram Business secretary.
+    """Telegram Business secretary.
 
-    IMPORTANT: ReplyKeyboardMarkup is not supported for messages sent on behalf
-    of a Business account, so the language selector and the final bot link use
-    InlineKeyboardMarkup.
+    Business messages can use inline keyboards, but Business callback updates
+    are not exposed by the current python-telegram-bot Bot API layer.
+    Therefore the language buttons use direct Telegram bot links.
+    This is reliable: tapping a language immediately opens the main FUNLANDIA
+    bot in that language.
     """
     message = update.effective_message
     if not message:
         return
 
-    business_languages = context.application.bot_data.setdefault("business_languages", {})
-    chat_id = message.chat.id
-    lang = business_languages.get(str(chat_id))
-
-    # First message from a client: ask for language with inline buttons.
-    if not lang:
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🇷🇺 Русский", callback_data="business_lang_ru"),
-                InlineKeyboardButton("🇺🇿 O‘zbekcha", callback_data="business_lang_uz"),
-            ]
-        ])
-        await message.reply_text(
-            "👋 Здравствуйте! Выберите язык / Tilni tanlang:",
-            reply_markup=keyboard,
-        )
-        return
-
-    await send_business_redirect(message, context, lang)
-
-
-async def send_business_redirect(message, context, lang):
-    """Send the localized redirect with an inline URL button."""
-    if lang == "uz":
-        text_out = "👇 To‘liq ma’lumot uchun bizning botimizga o‘ting"
-        button = "🎉 FUNLANDIA BOTINI OCHISH"
-    else:
-        text_out = "👇 Для полной информации перейдите в наш бот"
-        button = "🎉 ОТКРЫТЬ FUNLANDIA"
-
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(button, url="https://t.me/Funlandiauzbot")]
+        [
+            InlineKeyboardButton(
+                "🇷🇺 Русский",
+                url="https://t.me/Funlandiauzbot?start=ru"
+            ),
+            InlineKeyboardButton(
+                "🇺🇿 O‘zbekcha",
+                url="https://t.me/Funlandiauzbot?start=uz"
+            ),
+        ]
     ])
 
-    await message.reply_text(text_out, reply_markup=keyboard)
-
-
-async def business_callback_raw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handle Telegram's updateBusinessBotCallbackQuery directly.
-
-    python-telegram-bot 22.8 does not yet expose this Business-specific update
-    as a dedicated Update field, but unknown Bot API fields are preserved in
-    Update.api_kwargs. We therefore read it there and answer through the
-    business_connection_id supplied by Telegram.
-    """
-    raw = getattr(update, "api_kwargs", {}) or {}
-    callback = raw.get("business_bot_callback_query")
-    if not callback:
-        # Be tolerant if a future PTB version exposes it as a real attribute.
-        callback = getattr(update, "business_bot_callback_query", None)
-    if not callback:
-        return
-
-    data = callback.get("data", "") if isinstance(callback, dict) else getattr(callback, "data", "")
-    if isinstance(data, bytes):
-        data = data.decode("utf-8", errors="ignore")
-    data = str(data or "")
-    if data not in ("business_lang_ru", "business_lang_uz"):
-        return
-
-    connection_id = callback.get("connection_id") if isinstance(callback, dict) else getattr(callback, "connection_id", None)
-    query_id = callback.get("query_id") if isinstance(callback, dict) else getattr(callback, "query_id", None)
-    raw_message = callback.get("message") if isinstance(callback, dict) else getattr(callback, "message", None)
-    if not connection_id or not query_id or not raw_message:
-        return
-
-    raw_chat = raw_message.get("chat", {}) if isinstance(raw_message, dict) else getattr(raw_message, "chat", None)
-    if isinstance(raw_chat, dict):
-        chat_id = raw_chat.get("id")
-    else:
-        chat_id = getattr(raw_chat, "id", None)
-    if not chat_id:
-        return
-
-    lang = "ru" if data == "business_lang_ru" else "uz"
-
-    # Keep the selected language for this Business chat.
-    business_languages = context.application.bot_data.setdefault("business_languages", {})
-    business_languages[str(chat_id)] = lang
-
-    # Telegram requires an answer to every callback query.
-    try:
-        await context.bot.answer_callback_query(callback_query_id=str(query_id))
-    except Exception as exc:
-        print(f"Business callback answer error: {exc}")
-
-    if lang == "uz":
-        text_out = "👇 To‘liq ma’lumot uchun bizning botimizga o‘ting"
-        button = "🎉 FUNLANDIA BOTINI OCHISH"
-    else:
-        text_out = "👇 Для полной информации перейдите в наш бот"
-        button = "🎉 ОТКРЫТЬ FUNLANDIA"
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(button, url="https://t.me/Funlandiauzbot")]
-    ])
-
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=text_out,
+    await message.reply_text(
+        "👋 Здравствуйте! Выберите язык / Tilni tanlang:\n\n"
+        "После выбора откроется бот FUNLANDIA на выбранном языке.",
         reply_markup=keyboard,
-        business_connection_id=connection_id,
     )
+
 
 def main():
     if not BOT_TOKEN:
@@ -1067,22 +998,13 @@ def main():
         )
     )
 
-    # Telegram currently delivers Business inline-button clicks as the raw
-    # updateBusinessBotCallbackQuery update. PTB 22.8 does not expose it in
-    # Update.ALL_TYPES, so handle it through api_kwargs.
-    app.add_handler(TypeHandler(Update, business_callback_raw))
 
     # Normal bot chats.
     app.add_handler(MessageHandler(filters.PHOTO, receive_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handler))
     app.add_error_handler(error_handler)
 
-    # Explicitly receive normal + Business updates, including the
-    # Business callback update that is not yet listed in PTB 22.8 ALL_TYPES.
-    allowed_updates = list(Update.ALL_TYPES)
-    if "business_bot_callback_query" not in allowed_updates:
-        allowed_updates.append("business_bot_callback_query")
-    app.run_polling(allowed_updates=allowed_updates)
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
