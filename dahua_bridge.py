@@ -51,6 +51,9 @@ class DahuaRPC:
         return response.json()
 
     def login(self):
+        # Newer Dahua Web 3.x firmware uses the same client type as the
+        # current browser interface. The challenge response supplies the
+        # encryption mode; for Default mode use Dahua's documented MD5 flow.
         first = self.session.post(
             self.base + "/RPC2_Login",
             json={
@@ -58,7 +61,8 @@ class DahuaRPC:
                 "params": {
                     "userName": self.username,
                     "password": "",
-                    "clientType": "Web3.0",
+                    "clientType": "Dahua3.0-Web3.0",
+                    "loginType": "Direct",
                 },
                 "id": self.request_id,
             },
@@ -69,8 +73,15 @@ class DahuaRPC:
         params = first.get("params") or {}
         realm = params.get("realm", "")
         random_value = params.get("random", "")
+        encryption = params.get("encryption", "Default")
         if not self.session_id or not realm or not random_value:
             raise RuntimeError(f"Dahua login challenge failed: {first}")
+
+        if encryption != "Default":
+            raise RuntimeError(
+                f"Dahua reports unsupported login encryption '{encryption}'. "
+                f"Challenge: {first}"
+            )
 
         h1 = hashlib.md5(
             f"{self.username}:{realm}:{self.password}".encode("utf-8")
@@ -86,7 +97,8 @@ class DahuaRPC:
                 "params": {
                     "userName": self.username,
                     "password": h2,
-                    "clientType": "Web3.0",
+                    "clientType": "Dahua3.0-Web3.0",
+                    "loginType": "Direct",
                     "authorityType": "Default",
                     "passwordType": "Default",
                 },
@@ -97,6 +109,14 @@ class DahuaRPC:
         ).json()
         self.request_id += 1
         if not second.get("result"):
+            error = second.get("error") or {}
+            code = error.get("code")
+            if second.get("params", {}).get("remainLoginTimes") == 0:
+                lock_seconds = int(second.get("params", {}).get("remainLockSecond", 300))
+                raise RuntimeError(
+                    f"Dahua login is temporarily locked for about {lock_seconds} seconds "
+                    f"(code {code}). Do not retry during the lock."
+                )
             raise RuntimeError(f"Dahua login failed: {second}")
         self.session_id = second.get("session") or self.session_id
         log.info("Dahua RPC2 login OK")
@@ -198,7 +218,15 @@ def main():
         except Exception as exc:
             log.exception("Bridge cycle failed: %s", exc)
             rpc.session_id = None
-            time.sleep(10)
+            message = str(exc)
+            if "temporarily locked" in message:
+                try:
+                    wait_seconds = int(message.split("about ", 1)[1].split(" seconds", 1)[0])
+                except Exception:
+                    wait_seconds = 300
+                time.sleep(max(wait_seconds, 60))
+            else:
+                time.sleep(30)
 
 
 if __name__ == "__main__":
