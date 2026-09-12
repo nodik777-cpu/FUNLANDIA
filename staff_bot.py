@@ -5,7 +5,8 @@ import hashlib
 import logging
 import sqlite3
 import threading
-from datetime import datetime, timezone, timedelta
+import calendar
+from datetime import datetime, timezone, timedelta, date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 import xml.etree.ElementTree as ET
@@ -29,6 +30,7 @@ LOCAL_TZ = timezone(timedelta(hours=5))
 MENU = ReplyKeyboardMarkup(
     [
         ["📊 Сегодня", "👥 Сейчас на работе"],
+        ["📅 Неделя", "🗓 Месяц"],
         ["👤 Мои записи", "📋 Мой отчёт"],
         ["ℹ️ Помощь"],
     ],
@@ -82,14 +84,12 @@ def now_local():
 
 
 def parse_time_value(value):
-    """Convert Dahua timestamps to Tashkent-local ISO text."""
     if value in (None, ""):
         return now_local().isoformat()
     text = str(value).strip()
     if text.isdigit():
         try:
             number = int(text)
-            # Dahua CGI integration documents CreateTime as Unix UTC seconds.
             dt = datetime.fromtimestamp(number, tz=timezone.utc).astimezone(LOCAL_TZ)
             return dt.isoformat()
         except Exception:
@@ -122,7 +122,6 @@ def first_value(data, *keys):
 
 
 def flatten_event(payload):
-    """Extract fields from JSON, form, XML and Dahua nested event layouts."""
     candidates = []
     if isinstance(payload, dict):
         candidates.append(payload)
@@ -132,7 +131,6 @@ def flatten_event(payload):
                 candidates.append(value)
             elif isinstance(value, list):
                 candidates.extend(x for x in value if isinstance(x, dict))
-        # Dahua may send Events[0].Field in form-like dictionaries.
         grouped = {}
         for key, value in payload.items():
             m = re.match(r"(?:Events|records)\[(\d+)\]\.(.+)$", str(key), re.I)
@@ -140,8 +138,7 @@ def flatten_event(payload):
                 grouped.setdefault(m.group(1), {})[m.group(2)] = value
         candidates.extend(grouped.values())
 
-    user_id = user_name = event_time = event_type = status = ""
-    rec_no = ""
+    user_id = user_name = event_time = event_type = status = rec_no = ""
     for item in candidates:
         user_id = user_id or str(first_value(item, "UserID", "user_id", "userId", "ID", "id", "No"))
         user_name = user_name or str(first_value(item, "CardName", "UserName", "user_name", "userIdName", "name", "Name"))
@@ -163,12 +160,8 @@ def flatten_event(payload):
 def event_key(payload, info):
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
     base = "|".join([
-        info["rec_no"],
-        info["user_id"],
-        info["user_name"],
-        info["event_time"],
-        info["event_type"],
-        info["status"],
+        info["rec_no"], info["user_id"], info["user_name"],
+        info["event_time"], info["event_type"], info["status"],
     ])
     return hashlib.sha256((base + "|" + raw).encode("utf-8")).hexdigest()
 
@@ -180,7 +173,6 @@ def status_success(value):
 
 def save_event(payload):
     info = flatten_event(payload)
-    # Ignore completely empty keepalive/test posts as attendance events.
     if not info["user_id"] and not info["user_name"]:
         return False, info
     key = event_key(payload, info)
@@ -192,12 +184,8 @@ def save_event(payload):
         VALUES (?, ?, ?, ?, ?, ?, 'dahua_http_push', ?)
         """,
         (
-            key,
-            info["user_id"],
-            info["user_name"],
-            info["event_time"],
-            info["event_type"],
-            info["status"],
+            key, info["user_id"], info["user_name"], info["event_time"],
+            info["event_type"], info["status"],
             json.dumps(payload, ensure_ascii=False, default=str),
         ),
     )
@@ -224,7 +212,6 @@ def xml_to_dict(raw):
 
 
 def parse_text_event(text):
-    """Parse Dahua text/plain format such as Events[0].UserID=123."""
     result = {}
     for line in re.split(r"\r?\n", text):
         line = line.strip()
@@ -246,24 +233,22 @@ def parse_body(raw, content_type):
             return json.loads(text or "{}")
         except Exception:
             pass
-
     if "xml" in ct or text.startswith("<"):
         parsed = xml_to_dict(raw)
         if parsed:
             return parsed
-
-    # Dahua HTTP Push can use multipart with a text/plain event part.
     if "multipart/" in ct:
         parts = re.split(rb"\r?\n--[^\r\n]+", raw)
         for part in parts:
             if not part:
                 continue
-            lower = part.lower()
-            marker = lower.find(b"\r\n\r\n")
+            marker = part.find(b"\r\n\r\n")
+            step = 4
             if marker < 0:
-                marker = lower.find(b"\n\n")
+                marker = part.find(b"\n\n")
+                step = 2
             if marker >= 0:
-                body = part[marker + (4 if part[marker:marker+4] == b"\r\n\r\n" else 2):].strip()
+                body = part[marker + step:].strip()
                 if body.startswith(b"{"):
                     try:
                         return json.loads(body.decode("utf-8", errors="replace"))
@@ -277,13 +262,11 @@ def parse_body(raw, content_type):
     form = parse_qs(text, keep_blank_values=True)
     if form:
         return {k: v[-1] if v else "" for k, v in form.items()}
-
     parsed = parse_text_event(text)
     return parsed or {"raw": text[:20000]}
 
 
 def extract_payloads(payload):
-    """Return one or more event dictionaries from a push payload."""
     if not isinstance(payload, dict):
         return []
     events = []
@@ -318,10 +301,7 @@ class DahuaHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         logger.info("DAHUA GET path=%s", path)
-        if path.startswith("/health"):
-            self._reply(200, "FUNLANDIA STAFF OK")
-        else:
-            self._reply(200, "OK")
+        self._reply(200, "FUNLANDIA STAFF OK" if path.startswith("/health") else "OK")
 
     def _read_chunked(self):
         chunks = []
@@ -335,7 +315,6 @@ class DahuaHandler(BaseHTTPRequestHandler):
             try:
                 size = int(line.split(b";", 1)[0], 16)
             except ValueError:
-                logger.warning("Invalid chunk size")
                 break
             if size == 0:
                 while True:
@@ -364,17 +343,11 @@ class DahuaHandler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             logger.info(
                 "DAHUA POST path=%s content-type=%s transfer=%s body-bytes=%s",
-                path,
-                content_type,
-                self.headers.get("Transfer-Encoding", ""),
-                len(raw),
+                path, content_type, self.headers.get("Transfer-Encoding", ""), len(raw)
             )
-
-            # Keepalive requests are answered immediately and never become attendance records.
             if "keepalive" in path.lower() or not raw:
                 self._reply(200, "OK")
                 return
-
             payload = parse_body(raw, content_type)
             inserted_count = 0
             for event in extract_payloads(payload):
@@ -384,18 +357,13 @@ class DahuaHandler(BaseHTTPRequestHandler):
                 if info["user_id"] or info["user_name"]:
                     logger.info(
                         "DAHUA EVENT inserted=%s id=%s name=%s time=%s type=%s status=%s",
-                        inserted,
-                        info["user_id"],
-                        info["user_name"],
-                        info["event_time"],
-                        info["event_type"],
-                        info["status"],
+                        inserted, info["user_id"], info["user_name"], info["event_time"],
+                        info["event_type"], info["status"]
                     )
             logger.info("DAHUA PUSH processed=%s new-events=%s", path, inserted_count)
             self._reply(200, "OK")
         except Exception as exc:
             logger.exception("DAHUA webhook error: %s", exc)
-            # Always acknowledge quickly so the terminal does not retry indefinitely.
             self._reply(200, "OK")
 
     def log_message(self, format, *args):
@@ -423,6 +391,20 @@ def day_rows(day, user_id=None, successful_only=True):
     return rows
 
 
+def rows_between(start_day, end_day, user_id=None):
+    conn = db()
+    where = ["event_time >= ?", "event_time < ?"]
+    args = [start_day + "T00:00:00+05:00", end_day + "T23:59:59.999999+05:00"]
+    if user_id:
+        where.append("user_id=?")
+        args.append(str(user_id))
+    where.append("(status IS NULL OR status='' OR lower(status) IN ('1','true','success','succeeded','ok','выполнено'))")
+    sql = "SELECT * FROM attendance WHERE " + " AND ".join(where) + " ORDER BY event_time ASC, id ASC"
+    rows = conn.execute(sql, args).fetchall()
+    conn.close()
+    return rows
+
+
 def normalize_type(value):
     text = str(value or "").strip().lower()
     if text in ("entry", "вход", "in"):
@@ -440,11 +422,9 @@ def parse_dt(value):
 
 
 def staff_state(rows):
-    """Build first entry, last exit, current presence and worked duration."""
     events = [r for r in rows if status_success(r["status"])]
     if not events:
         return {"present": False, "first": None, "last_exit": None, "worked": 0, "events": []}
-
     typed = [(r, normalize_type(r["event_type"])) for r in events]
     has_direction = any(t for _, t in typed)
     present = False
@@ -452,7 +432,6 @@ def staff_state(rows):
     last_exit = None
     worked = 0
     open_time = None
-
     for row, typ in typed:
         dt = parse_dt(row["event_time"])
         if not dt:
@@ -471,7 +450,6 @@ def staff_state(rows):
                 open_time = None
             present = False
         elif not has_direction:
-            # Fallback only for old records without Entry/Exit. Successful events alternate in/out.
             if first is None:
                 first = dt
             if present:
@@ -484,15 +462,11 @@ def staff_state(rows):
             else:
                 open_time = dt
                 present = True
-
     if open_time is not None:
         worked += max(0, int((now_local() - open_time).total_seconds()))
-
-    # If the device supplied explicit direction, the latest event determines presence.
     if has_direction:
         last_typed = next((t for _, t in reversed(typed) if t), "")
         present = last_typed == "Entry"
-
     return {"present": present, "first": first, "last_exit": last_exit, "worked": worked, "events": events}
 
 
@@ -539,28 +513,117 @@ def shift_late(first):
         return None
 
 
+def period_days(start_day, end_day):
+    start = date.fromisoformat(start_day)
+    end = date.fromisoformat(end_day)
+    while start <= end:
+        yield start.isoformat()
+        start += timedelta(days=1)
+
+
+def period_people(start_day, end_day):
+    result = {}
+    for day in period_days(start_day, end_day):
+        for person in all_people_today(day):
+            key = person["id"]
+            entry = result.setdefault(key, {
+                "id": key, "name": person["name"], "days": 0, "worked": 0,
+                "late_days": 0, "late_minutes": 0, "present_days": 0,
+            })
+            if person["name"]:
+                entry["name"] = person["name"]
+            entry["days"] += 1
+            entry["worked"] += person["worked"]
+            if person["present"]:
+                entry["present_days"] += 1
+            late = shift_late(person["first"])
+            if late and late > 0:
+                entry["late_days"] += 1
+                entry["late_minutes"] += late
+    return sorted(result.values(), key=lambda x: x["name"].lower())
+
+
+def split_text(text, limit=3900):
+    if len(text) <= limit:
+        return [text]
+    parts = []
+    current = []
+    length = 0
+    for block in text.split("\n\n"):
+        add = len(block) + (2 if current else 0)
+        if current and length + add > limit:
+            parts.append("\n\n".join(current))
+            current = [block]
+            length = len(block)
+        else:
+            current.append(block)
+            length += add
+    if current:
+        parts.append("\n\n".join(current))
+    return parts
+
+
 def dashboard_text(day=None):
     day = day or now_local().strftime("%Y-%m-%d")
     people = all_people_today(day)
     present = [p for p in people if p["present"]]
     absent = [p for p in people if not p["present"]]
-    total = len(people)
     lines = [
-        f"📊 FUNLANDIA — {day}",
-        "",
-        f"👥 Всего отметились: {total}",
+        f"📊 FUNLANDIA — {day}", "",
+        f"👥 Всего отметились: {len(people)}",
         f"🟢 Сейчас на работе: {len(present)}",
         f"🔴 Уже ушли: {len(absent)}",
     ]
     if present:
         lines += ["", "🟢 СЕЙЧАС НА РАБОТЕ:"]
-        for p in present:
-            lines.append(f"• {p['name']} — с {fmt_hm(p['first'])}")
+        lines += [f"• {p['name']} — с {fmt_hm(p['first'])}" for p in present]
     if absent:
         lines += ["", "🔴 УШЛИ:"]
-        for p in absent:
-            lines.append(f"• {p['name']} — до {fmt_hm(p['last_exit'])}")
+        lines += [f"• {p['name']} — до {fmt_hm(p['last_exit'])}" for p in absent]
     return "\n".join(lines)
+
+
+def period_report_text(start_day, end_day, title):
+    people = period_people(start_day, end_day)
+    if not people:
+        return f"📊 {title}\n\nЗа этот период записей нет."
+    total_hours = sum(p["worked"] for p in people)
+    late_people = sum(1 for p in people if p["late_days"])
+    lines = [
+        f"📊 {title}",
+        f"📅 {start_day} — {end_day}",
+        "",
+        f"👥 Сотрудников с отметками: {len(people)}",
+        f"⏱ Общее отработанное время: {fmt_duration(total_hours)}",
+        f"⚠️ Сотрудников с опозданиями: {late_people}",
+        "",
+    ]
+    for p in people:
+        late = f" | ⚠️ опозданий: {p['late_days']} ({p['late_minutes']} мин)" if p["late_days"] else ""
+        lines.append(
+            f"👤 {p['name']}\n"
+            f"   Рабочих дней: {p['days']} | Отработано: {fmt_duration(p['worked'])}{late}"
+        )
+    return "\n\n".join(lines)
+
+
+def current_week_range():
+    today = now_local().date()
+    monday = today - timedelta(days=today.weekday())
+    sunday = monday + timedelta(days=6)
+    return monday.isoformat(), sunday.isoformat()
+
+
+def current_month_range():
+    today = now_local().date()
+    first = today.replace(day=1)
+    last = today.replace(day=calendar.monthrange(today.year, today.month)[1])
+    return first.isoformat(), last.isoformat()
+
+
+async def send_long(update, text):
+    for part in split_text(text):
+        await update.message.reply_text(part, reply_markup=MENU)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -580,7 +643,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👷 FUNLANDIA — БОТ СОТРУДНИКОВ\n\n"
         "Dahua подключается напрямую к боту.\n"
-        "Здесь можно видеть присутствие, входы, выходы и отчёты.",
+        "Здесь можно видеть присутствие, входы, выходы, недельные и месячные отчёты.",
         reply_markup=MENU,
     )
 
@@ -590,12 +653,15 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "ℹ️ Возможности:\n\n"
         "📊 Сегодня — сколько сотрудников отметилось, кто сейчас на работе и кто уже ушёл.\n"
         "👥 Сейчас на работе — текущий список сотрудников.\n"
+        "📅 Неделя — отчёт за текущую неделю.\n"
+        "🗓 Месяц — отчёт за текущий месяц.\n"
         "👤 Мои записи — ваши входы и выходы за сегодня.\n"
         "📋 Мой отчёт — первый вход, последний выход, отработанное время и опоздание.\n\n"
         "Команды:\n"
         "/today — сводка за сегодня\n"
-        "/me — мои записи\n"
-        "/report YYYY-MM-DD — общий отчёт\n"
+        "/week — отчёт за текущую неделю\n"
+        "/month — отчёт за текущий месяц\n"
+        "/report YYYY-MM-DD — общий отчёт за день\n"
         "/link ID — привязка Telegram к ID Dahua\n"
         "/last — последние события"
     )
@@ -616,12 +682,28 @@ async def presence(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(dashboard_text(), reply_markup=MENU)
 
 
+async def week_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        await update.message.reply_text("🔒 Недельный отчёт доступен руководителю.", reply_markup=MENU)
+        return
+    start_day, end_day = current_week_range()
+    await send_long(update, period_report_text(start_day, end_day, "НЕДЕЛЬНЫЙ ОТЧЁТ СОТРУДНИКОВ"))
+
+
+async def month_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        await update.message.reply_text("🔒 Месячный отчёт доступен руководителю.", reply_markup=MENU)
+        return
+    start_day, end_day = current_month_range()
+    await send_long(update, period_report_text(start_day, end_day, "МЕСЯЧНЫЙ ОТЧЁТ СОТРУДНИКОВ"))
+
+
 async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ADMIN_CHAT_ID and not is_admin(update):
         await update.message.reply_text("🔒 Привязку сотрудника выполняет руководитель.", reply_markup=MENU)
         return
     if not context.args or not context.args[0].strip():
-        await update.message.reply_text("Использование: /link ID\nНапример: /link 33")
+        await update.message.reply_text("Использование: /link ID\nНапример: /link 33", reply_markup=MENU)
         return
     dahua_id = context.args[0].strip()
     now = now_local().isoformat()
@@ -662,8 +744,7 @@ async def my_records(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for row in rows:
         typ = normalize_type(row["event_type"])
         label = "Вход" if typ == "Entry" else "Выход" if typ == "Exit" else "Отметка"
-        dt = parse_dt(row["event_time"])
-        lines.append(f"• {label}: {fmt_hm(dt)}")
+        lines.append(f"• {label}: {fmt_hm(parse_dt(row['event_time']))}")
     await update.message.reply_text("\n".join(lines), reply_markup=MENU)
 
 
@@ -683,9 +764,7 @@ async def my_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = rows[-1]["user_name"] if rows else user["dahua_user_id"]
     late = shift_late(state["first"])
     lines = [
-        f"📋 МОЙ ОТЧЁТ — {day}",
-        f"👤 {name}",
-        "",
+        f"📋 МОЙ ОТЧЁТ — {day}", f"👤 {name}", "",
         f"🟢 Первый вход: {fmt_hm(state['first'])}",
         f"🔴 Последний выход: {fmt_hm(state['last_exit'])}",
         f"⏱ Отработано: {fmt_duration(state['worked'])}",
@@ -722,11 +801,13 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"   Вход: {fmt_hm(p['first'])} | Выход: {fmt_hm(p['last_exit'])} | "
             f"Время: {fmt_duration(p['worked'])}{late_text}"
         )
-    text = "\n".join(lines)
-    await update.message.reply_text(text[:3900], reply_markup=MENU)
+    await send_long(update, "\n".join(lines))
 
 
 async def last_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        await update.message.reply_text("🔒 Этот раздел доступен руководителю.", reply_markup=MENU)
+        return
     conn = db()
     rows = conn.execute("SELECT * FROM attendance ORDER BY id DESC LIMIT 20").fetchall()
     conn.close()
@@ -748,6 +829,10 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await today(update, context)
     elif text == "👥 Сейчас на работе":
         await presence(update, context)
+    elif text == "📅 Неделя":
+        await week_report(update, context)
+    elif text == "🗓 Месяц":
+        await month_report(update, context)
     elif text == "👤 Мои записи":
         await my_records(update, context)
     elif text == "📋 Мой отчёт":
@@ -766,6 +851,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("today", today))
+    app.add_handler(CommandHandler("week", week_report))
+    app.add_handler(CommandHandler("month", month_report))
     app.add_handler(CommandHandler("link", link))
     app.add_handler(CommandHandler("me", my_records))
     app.add_handler(CommandHandler("report", report))
