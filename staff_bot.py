@@ -81,34 +81,107 @@ class DahuaHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        logger.info("DAHUA GET path=%s", self.path)
         if self.path.startswith("/health"):
             self._reply(200, "FUNLANDIA STAFF OK")
         else:
             self._reply(200, "FUNLANDIA STAFF WEBHOOK OK")
 
+    def _read_chunked(self):
+        chunks = []
+        while True:
+            line = self.rfile.readline(65536)
+            if not line:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                size = int(line.split(b";", 1)[0], 16)
+            except ValueError:
+                logger.warning("DAHUA invalid chunk size: %r", line[:100])
+                break
+            if size == 0:
+                # Consume trailing CRLF / optional trailer headers.
+                while True:
+                    trailer = self.rfile.readline(65536)
+                    if not trailer or trailer in (b"\r\n", b"\n"):
+                        break
+                break
+            data = self.rfile.read(size)
+            chunks.append(data)
+            self.rfile.read(2)  # CRLF after each chunk
+        return b"".join(chunks)
+
+    def _read_body(self):
+        transfer_encoding = self.headers.get("Transfer-Encoding", "")
+        if "chunked" in transfer_encoding.lower():
+            return self._read_chunked()
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        return self.rfile.read(length) if length else b""
+
     def do_POST(self):
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            raw = self.rfile.read(length) if length else b""
-            text = raw.decode("utf-8", errors="replace")
+            raw = self._read_body()
             content_type = self.headers.get("Content-Type", "")
-            logger.info("DAHUA POST content-type=%s body=%s", content_type, text[:4000])
+            transfer_encoding = self.headers.get("Transfer-Encoding", "")
+            logger.info(
+                "DAHUA POST path=%s content-type=%s transfer-encoding=%s length=%s body-bytes=%s",
+                self.path,
+                content_type,
+                transfer_encoding,
+                self.headers.get("Content-Length", ""),
+                len(raw),
+            )
+
+            # Keep a readable preview, but do not dump binary JPEG data into logs.
+            if raw:
+                preview = raw[:2000].decode("utf-8", errors="replace")
+                logger.info("DAHUA BODY PREVIEW: %s", preview)
 
             payload = {}
+            text = raw.decode("utf-8", errors="replace")
             if "json" in content_type.lower():
                 payload = json.loads(text or "{}")
+            elif "multipart/" in content_type.lower():
+                # Dahua commonly sends multipart data containing an event JSON part
+                # and an image part. Extract JSON-looking parts without assuming a
+                # fixed field name or exact multipart layout.
+                for marker in (b"application/json", b"text/json"):
+                    pos = raw.lower().find(marker)
+                    if pos >= 0:
+                        start = raw.find(b"\r\n\r\n", pos)
+                        if start >= 0:
+                            start += 4
+                            end = raw.find(b"\r\n--", start)
+                            if end < 0:
+                                end = len(raw)
+                            candidate = raw[start:end].decode("utf-8", errors="replace").strip()
+                            try:
+                                payload = json.loads(candidate)
+                                break
+                            except Exception:
+                                pass
             else:
-                # Accept simple key=value or form-style payloads without assuming a fixed Dahua format.
                 for part in text.replace("\n", "&").split("&"):
                     if "=" in part:
                         key, value = part.split("=", 1)
                         payload[key.strip()] = value.strip()
 
-            if not payload and text:
+            if not payload and text and "multipart/" not in content_type.lower():
                 payload = {"raw": text}
 
             if payload:
                 save_event(payload)
+                logger.info(
+                    "DAHUA EVENT parsed user_id=%s user_name=%s event_time=%s event_type=%s",
+                    payload.get("UserID") or payload.get("user_id") or payload.get("userId") or "",
+                    payload.get("CardName") or payload.get("UserName") or payload.get("user_name") or payload.get("name") or "",
+                    payload.get("CreateTime") or payload.get("EventTime") or payload.get("event_time") or "",
+                    payload.get("Method") or payload.get("EventType") or payload.get("event_type") or payload.get("Action") or "",
+                )
+            else:
+                logger.info("DAHUA EVENT: no JSON/form payload extracted; raw bytes received=%s", len(raw))
 
             self._reply(200, "OK")
         except Exception as exc:
