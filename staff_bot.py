@@ -72,7 +72,8 @@ def first(d, *keys):
     return ""
 
 def flatten(d):
-    if not isinstance(d, dict): return {"user_id":"","user_name":"","event_time":parse_time(""),"event_type":"","status":"","rec_no":""}
+    if not isinstance(d, dict):
+        return {"user_id":"","user_name":"","event_time":parse_time(""),"event_type":"","status":"","rec_no":""}
     cand = [d]
     for k in ("data","Data","event","Event","record","Record","params","paramsData","info","Info"):
         v = d.get(k)
@@ -83,15 +84,15 @@ def flatten(d):
             try:
                 q=json.loads(v); cand.append(q if isinstance(q,dict) else {})
             except Exception: pass
-    uid=name=tm=typ=status=rec=""
+    uid=name=tm=typv=status=rec=""
     for x in cand:
         uid = uid or str(first(x,"UserID","user_id","userId","personCode","ID","id","No"))
         name = name or str(first(x,"CardName","UserName","user_name","userIdName","personName","name","Name"))
         tm = tm or str(first(x,"CreateTime","EventTime","event_time","alarmDate","Time","time"))
-        typ = typ or str(first(x,"Type","EventType","event_type","Action","action","operateType"))
+        typv = typv or str(first(x,"Type","EventType","event_type","Action","action","operateType"))
         status = status or str(first(x,"Status","status","Result","result","ErrorCode","syncFlags"))
         rec = rec or str(first(x,"RecNo","RecordNo","recordNo","id"))
-    return {"user_id":uid.strip(),"user_name":name.strip(),"event_time":parse_time(tm),"event_type":typ.strip(),"status":status.strip(),"rec_no":rec.strip()}
+    return {"user_id":uid.strip(),"user_name":name.strip(),"event_time":parse_time(tm),"event_type":typv.strip(),"status":status.strip(),"rec_no":rec.strip()}
 
 def save_event(payload):
     info=flatten(payload)
@@ -99,7 +100,8 @@ def save_event(payload):
     raw=json.dumps(payload,ensure_ascii=False,default=str,sort_keys=True)
     base="|".join(info[k] for k in ("rec_no","user_id","user_name","event_time","event_type","status"))
     key=hashlib.sha256((base+"|"+raw).encode()).hexdigest()
-    c=db(); cur=c.execute("""INSERT OR IGNORE INTO attendance
+    c=db()
+    cur=c.execute("""INSERT OR IGNORE INTO attendance
         (event_key,user_id,user_name,event_time,event_type,status,source,raw_payload)
         VALUES(?,?,?,?,?,?,?,?)""",
         (key,info["user_id"],info["user_name"],info["event_time"],info["event_type"],info["status"],"dahua_http_push",raw))
@@ -260,15 +262,14 @@ async def start(u,c):
     await u.message.reply_text("👷 FUNLANDIA — БОТ СОТРУДНИКОВ\n\nDahua подключается напрямую.\nДоступны присутствие и отчёты за день, неделю и месяц.",reply_markup=MENU)
 
 async def help_cmd(u,c):
-    await u.message.reply_text("ℹ️ Меню:\n📊 Сегодня — сводка\n👥 Сейчас на работе — присутствующие\n📅 Неделя — недельный отчёт\n🗓 Месяц — месячный отчёт\n👤 Мои записи — мои входы/выходы\n📋 Мой отчёт — мои часы и опоздание\n\nКоманды: /today /week /month /report YYYY-MM-DD /link ID /me /last",reply_markup=MENU)
+    await u.message.reply_text("ℹ️ Меню:\n📊 Сегодня — сводка\n👥 Сейчас на работе — кто внутри\n📅 Неделя / 🗓 Месяц — отчёты руководителя\n👤 Мои записи — отметки сотрудника\n📋 Мой отчёт — личная сводка\n\nДля привязки: руководитель использует /link ID",reply_markup=MENU)
 
-async def today_cmd(u,c):
-    if admin(u): await u.message.reply_text(dashboard(),reply_markup=MENU)
-    else: await my_report(u,c)
+async def today_cmd(u,c): await u.message.reply_text(dashboard(),reply_markup=MENU)
 
 async def presence(u,c):
-    if not admin(u): return await u.message.reply_text("🔒 Этот раздел доступен руководителю.",reply_markup=MENU)
-    await u.message.reply_text(dashboard(),reply_markup=MENU)
+    ps=[p for p in people_day(now_local().strftime("%Y-%m-%d")) if p["present"]]
+    text="👥 СЕЙЧАС НА РАБОТЕ\n\n"+("\n".join(f"• {p['name']} — с {fmt_time(p['first'])}" for p in ps) if ps else "Сейчас никто не отмечен на работе.")
+    await u.message.reply_text(text,reply_markup=MENU)
 
 async def week(u,c):
     if not admin(u): return await u.message.reply_text("🔒 Недельный отчёт доступен руководителю.",reply_markup=MENU)
@@ -277,6 +278,10 @@ async def week(u,c):
 async def month(u,c):
     if not admin(u): return await u.message.reply_text("🔒 Месячный отчёт доступен руководителю.",reply_markup=MENU)
     _,_,a,b=ranges(); await send_long(u,report_period(a,b,"МЕСЯЧНЫЙ ОТЧЁТ СОТРУДНИКОВ"))
+
+def linked(chat):
+    c=db(); r=c.execute("SELECT dahua_user_id FROM telegram_users WHERE chat_id=?",(chat,)).fetchone(); c.close()
+    return r["dahua_user_id"] if r and r["dahua_user_id"] else None
 
 async def link(u,c):
     if ADMIN_CHAT_ID and not admin(u): return await u.message.reply_text("🔒 Привязку выполняет руководитель.",reply_markup=MENU)
@@ -288,75 +293,81 @@ async def link(u,c):
     r=con.execute("SELECT user_name FROM attendance WHERE user_id=? AND user_name<>'' ORDER BY id DESC LIMIT 1",(uid,)).fetchone(); con.commit(); con.close()
     await u.message.reply_text(f"✅ Telegram привязан к {r['user_name'] if r else uid} (ID {uid}).",reply_markup=MENU)
 
-def linked(chat):
-    c=db(); r=c.execute("SELECT dahua_user_id FROM telegram_users WHERE chat_id=?",(chat,)).fetchone(); c.close(); return r["dahua_user_id"] if r and r["dahua_user_id"] else None
-
 async def me(u,c):
     uid=linked(u.effective_chat.id)
     if not uid:return await u.message.reply_text("Ваш Telegram пока не привязан. Руководитель: /link ID",reply_markup=MENU)
-    day=now_local().strftime("%Y-%m-%d"); rows=day_rows(day,uid)
-    if not rows:return await u.message.reply_text("📅 Сегодня записей пока нет.",reply_markup=MENU)
-    lines=[f"👤 {rows[-1]['user_name'] or uid}",f"📅 {day}",""]
-    for r in rows:
-        t=typ(r["event_type"]); lines.append(f"• {'Вход' if t=='Entry' else 'Выход' if t=='Exit' else 'Отметка'}: {fmt_time(dt(r['event_time']))}")
-    await u.message.reply_text("\n".join(lines),reply_markup=MENU)
-
-async def my_report(u,c):
-    uid=linked(u.effective_chat.id)
-    if not uid:return await u.message.reply_text(dashboard() if admin(u) else "Ваш Telegram пока не привязан. Руководитель: /link ID",reply_markup=MENU)
-    day=now_local().strftime("%Y-%m-%d"); rows=day_rows(day,uid); s=state(rows); name=rows[-1]["user_name"] if rows else uid; l=late(s["first"])
-    lines=[f"📋 МОЙ ОТЧЁТ — {day}",f"👤 {name}","",f"🟢 Первый вход: {fmt_time(s['first'])}",f"🔴 Последний выход: {fmt_time(s['last_exit'])}",f"⏱ Отработано: {fmt_dur(s['worked'])}",f"📍 Статус: {'НА РАБОТЕ' if s['present'] else 'УШЁЛ'}"]
-    if l and l>0:lines.append(f"⚠️ Опоздание: {l} мин")
-    elif l==0:lines.append("✅ Опоздания нет")
-    await u.message.reply_text("\n".join(lines),reply_markup=MENU)
+    rows=day_rows(now_local().strftime("%Y-%m-%d"),uid)
+    if not rows:return await u.message.reply_text("Сегодня отметок пока нет.",reply_markup=MENU)
+    text="👤 Мои записи\n\n"+"\n".join(f"• {fmt_time(dt(r['event_time']))} — {r['event_type'] or 'Отметка'} — {r['status'] or 'Выполнено'}" for r in rows)
+    await u.message.reply_text(text,reply_markup=MENU)
 
 async def report(u,c):
-    if not admin(u):return await my_report(u,c)
-    day=c.args[0] if c.args else now_local().strftime("%Y-%m-%d")
-    try:datetime.strptime(day,"%Y-%m-%d")
-    except ValueError:return await u.message.reply_text("Формат даты: /report 2026-09-12",reply_markup=MENU)
-    ps=people_day(day)
-    if not ps:return await u.message.reply_text(f"📊 За {day} записей нет.",reply_markup=MENU)
-    lines=[f"📊 ОТЧЁТ СОТРУДНИКОВ — {day}",""]
-    for p in ps:
-        l=late(p["first"]); lines.append(f"{'🟢 на работе' if p['present'] else '🔴 ушёл'} — {p['name']}\n   Вход: {fmt_time(p['first'])} | Выход: {fmt_time(p['last_exit'])} | Время: {fmt_dur(p['worked'])}"+(f" | ⚠️ {l} мин" if l else ""))
-    await send_long(u,"\n".join(lines))
+    uid=linked(u.effective_chat.id)
+    if not uid:return await u.message.reply_text("Ваш Telegram пока не привязан. Руководитель: /link ID",reply_markup=MENU)
+    rows=day_rows(now_local().strftime("%Y-%m-%d"),uid); s=state(rows)
+    name=rows[-1]["user_name"] if rows else uid
+    text=f"📋 Мой отчёт — {name}\n\nВход: {fmt_time(s['first'])}\nВыход: {fmt_time(s['last_exit'])}\nОтработано: {fmt_dur(s['worked'])}\nСтатус: {'🟢 на работе' if s['present'] else '🔴 не на работе'}"
+    l=late(s["first"])
+    if l and l>0:text+=f"\nОпоздание: {l} мин"
+    await u.message.reply_text(text,reply_markup=MENU)
 
 async def last(u,c):
-    if not admin(u):return await u.message.reply_text("🔒 Этот раздел доступен руководителю.",reply_markup=MENU)
-    con=db(); rs=con.execute("SELECT * FROM attendance ORDER BY id DESC LIMIT 20").fetchall(); con.close()
-    if not rs:return await u.message.reply_text("Событий пока нет.",reply_markup=MENU)
-    lines=["🕘 ПОСЛЕДНИЕ СОБЫТИЯ:"]
-    for r in rs:lines.append(f"• {fmt_time(dt(r['event_time']))} — {r['user_name'] or r['user_id']} — {'Вход' if typ(r['event_type'])=='Entry' else 'Выход' if typ(r['event_type'])=='Exit' else 'Отметка'}")
-    await u.message.reply_text("\n".join(lines),reply_markup=MENU)
+    if not admin(u): return await u.message.reply_text("🔒 Последние записи доступны руководителю.",reply_markup=MENU)
+    con=db(); rows=con.execute("SELECT * FROM attendance ORDER BY id DESC LIMIT 20").fetchall(); con.close()
+    if not rows:return await u.message.reply_text("Записей пока нет.",reply_markup=MENU)
+    text="📌 Последние записи\n\n"+"\n".join(f"• {fmt_time(dt(r['event_time']))} {r['user_name'] or r['user_id']} — {r['event_type'] or 'Отметка'}" for r in rows)
+    await u.message.reply_text(text,reply_markup=MENU)
+
+async def buttons(u,c):
+    t=(u.message.text or "").strip()
+    if t=="📊 Сегодня": return await today_cmd(u,c)
+    if t=="👥 Сейчас на работе": return await presence(u,c)
+    if t=="📅 Неделя": return await week(u,c)
+    if t=="🗓 Месяц": return await month(u,c)
+    if t=="👤 Мои записи": return await me(u,c)
+    if t=="📋 Мой отчёт": return await report(u,c)
+    if t=="ℹ️ Помощь": return await help_cmd(u,c)
+    await u.message.reply_text("Выберите пункт меню.",reply_markup=MENU)
 
 class DahuaHandler(BaseHTTPRequestHandler):
     protocol_version="HTTP/1.1"
+    server_version="FUNLANDIA-STAFF/2.0"
     def reply(self,code=200,text="OK"):
-        b=text.encode(); self.send_response(code); self.send_header("Content-Type","text/plain; charset=utf-8"); self.send_header("Content-Length",str(len(b))); self.end_headers()
-        try:self.wfile.write(b)
-        except BrokenPipeError:pass
+        b=text.encode()
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type","text/plain; charset=utf-8")
+            self.send_header("Content-Length",str(len(b)))
+            self.send_header("Connection","close")
+            self.end_headers()
+            self.wfile.write(b); self.wfile.flush()
+        except Exception: pass
+
     def read_body(self):
-        if "100-continue" in self.headers.get("Expect","").lower():
-            try:self.send_response_only(100); self.end_headers()
-            except Exception:pass
-        if "chunked" in self.headers.get("Transfer-Encoding","").lower(): return self.read_chunked()
+        expect=self.headers.get("Expect","").lower()
+        if "100-continue" in expect:
+            try:
+                self.send_response_only(100); self.end_headers()
+            except Exception: pass
+        te=self.headers.get("Transfer-Encoding","").lower()
+        if "chunked" in te: return self.read_chunked()
         try:n=int(self.headers.get("Content-Length","0") or 0)
         except ValueError:n=0
-        if n:return self.rfile.read(n)
-        chunks=[]; old=self.connection.gettimeout()
+        if n<=0:return b""
+        data=b""; old_timeout=self.connection.gettimeout()
         try:
-            self.connection.settimeout(0.7)
-            while True:
-                try:x=self.rfile.read1(65536)
-                except (socket.timeout,TimeoutError,OSError):break
-                if not x:break
-                chunks.append(x)
-                if len(x)<65536:continue
+            self.connection.settimeout(8.0)
+            while len(data)<n:
+                chunk=self.rfile.read(n-len(data))
+                if not chunk:break
+                data+=chunk
+        except (socket.timeout,TimeoutError,OSError) as e:
+            logger.warning("DAHUA body read incomplete expected=%s got=%s error=%s",n,len(data),e)
         finally:
-            try:self.connection.settimeout(old)
+            try:self.connection.settimeout(old_timeout)
             except Exception:pass
-        return b"".join(chunks)
+        return data
+
     def read_chunked(self):
         out=[]
         while True:
@@ -364,17 +375,24 @@ class DahuaHandler(BaseHTTPRequestHandler):
             if not line:break
             try:n=int(line.strip().split(b";",1)[0],16)
             except Exception:break
-            if n==0:self.rfile.readline();break
-            out.append(self.rfile.read(n));self.rfile.read(2)
+            if n==0:
+                self.rfile.readline()
+                break
+            out.append(self.rfile.read(n)); self.rfile.read(2)
         return b"".join(out)
+
     def event_from_query_headers(self):
-        p=parse_qs(urlparse(self.path).query,keep_blank_values=True); d={k:(v[-1] if v else "") for k,v in p.items()}
+        p=parse_qs(urlparse(self.path).query,keep_blank_values=True)
+        d={k:(v[-1] if v else "") for k,v in p.items()}
         for k,v in self.headers.items():
             nk=re.sub(r"[^a-z0-9_]","",k.lower())
-            if nk in {"userid","user_id","username","cardname","eventtime","eventtype","type","status","recno","recordno","createtime","time","action"} and v:d[k]=v
+            if nk in {"userid","user_id","username","cardname","eventtime","eventtype","type","status","recno","recordno","createtime","time","action"} and v:
+                d[k]=v
         return d
+
     def process(self,raw):
-        ct=self.headers.get("Content-Type",""); p=parse_body(raw,ct) if raw else self.event_from_query_headers()
+        ct=self.headers.get("Content-Type","")
+        p=parse_body(raw,ct) if raw else self.event_from_query_headers()
         if not p:return 0
         n=0
         for e in payloads(p):
@@ -382,38 +400,36 @@ class DahuaHandler(BaseHTTPRequestHandler):
             if info["user_id"] or info["user_name"]:
                 logger.info("DAHUA EVENT inserted=%s id=%s name=%s time=%s type=%s status=%s",ins,info["user_id"],info["user_name"],info["event_time"],info["event_type"],info["status"])
         return n
+
     def do_GET(self):
-        path=urlparse(self.path).path; logger.info("DAHUA GET path=%s",path)
+        path=urlparse(self.path).path
+        logger.info("DAHUA GET path=%s",path)
         if "keepalive" not in path.lower():self.process(b"")
         self.reply(200,"FUNLANDIA STAFF OK" if path.startswith("/health") else "OK")
+
     def do_POST(self):
         try:
             raw=self.read_body(); path=urlparse(self.path).path
-            logger.info("DAHUA POST path=%s content-type=%s transfer=%s content-length=%s body-bytes=%s",path,self.headers.get("Content-Type",""),self.headers.get("Transfer-Encoding",""),self.headers.get("Content-Length",""),len(raw))
+            preview=raw[:2000].decode("utf-8","replace") if raw else ""
+            logger.info("DAHUA POST path=%s content-type=%s transfer=%s content-length=%s body-bytes=%s body-preview=%r",path,self.headers.get("Content-Type",""),self.headers.get("Transfer-Encoding",""),self.headers.get("Content-Length",""),len(raw),preview)
             if "keepalive" not in path.lower():logger.info("DAHUA PUSH processed=%s new-events=%s",path,self.process(raw))
             self.reply(200,"OK")
         except Exception as e:
             logger.exception("DAHUA webhook error: %s",e)
             try:self.reply(200,"OK")
             except Exception:pass
+
     def log_message(self,*args):pass
 
 def http_server():
-    s=ThreadingHTTPServer(("0.0.0.0",PORT),DahuaHandler); logger.info("DAHUA HTTP PUSH SERVER LISTENING ON %s",PORT); s.serve_forever()
-
-async def buttons(u,c):
-    t=(u.message.text or "").strip()
-    if t=="📊 Сегодня":return await today_cmd(u,c)
-    if t=="👥 Сейчас на работе":return await presence(u,c)
-    if t=="📅 Неделя":return await week(u,c)
-    if t=="🗓 Месяц":return await month(u,c)
-    if t=="👤 Мои записи":return await me(u,c)
-    if t=="📋 Мой отчёт":return await my_report(u,c)
-    if t=="ℹ️ Помощь":return await help_cmd(u,c)
+    s=ThreadingHTTPServer(("0.0.0.0",PORT),DahuaHandler)
+    s.daemon_threads=True
+    logger.info("DAHUA HTTP PUSH SERVER LISTENING ON %s",PORT)
+    s.serve_forever()
 
 def main():
     if not BOT_TOKEN:raise RuntimeError("BOT_TOKEN is not set")
-    init_db(); threading.Thread(target=http_server,daemon=True).start()
+    init_db(); threading.Thread(target=http_server,daemon=True,name="dahua-http").start()
     app=Application.builder().token(BOT_TOKEN).build()
     for cmd,fn in [("start",start),("help",help_cmd),("today",today_cmd),("week",week),("month",month),("link",link),("me",me),("report",report),("last",last)]:app.add_handler(CommandHandler(cmd,fn))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,buttons)); logger.info("FUNLANDIA STAFF BOT STARTED"); app.run_polling(drop_pending_updates=False)
