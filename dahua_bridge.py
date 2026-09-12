@@ -4,6 +4,7 @@ import json
 import hashlib
 import logging
 import threading
+import getpass
 from datetime import datetime, timezone, timedelta
 
 import requests
@@ -154,8 +155,11 @@ def push(record):
 
 
 def main():
+    global DAHUA_PASSWORD
     if not DAHUA_PASSWORD:
-        raise RuntimeError("DAHUA_PASSWORD is not set")
+        DAHUA_PASSWORD = getpass.getpass("Enter Dahua admin password: ")
+    if not DAHUA_PASSWORD:
+        raise RuntimeError("Dahua password cannot be empty")
 
     rpc = DahuaRPC(DAHUA_HOST, DAHUA_USER, DAHUA_PASSWORD)
     last_ts = int(time.time()) - 300
@@ -187,7 +191,6 @@ def main():
                 except (TypeError, ValueError):
                     pass
 
-            # Keep a small overlap so records with equal timestamps are not missed.
             last_ts = max(0, max_ts - 2)
             if len(seen) > 5000:
                 seen = set(list(seen)[-2500:])
