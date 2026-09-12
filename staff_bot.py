@@ -1,437 +1,260 @@
-import os, re, json, hashlib, logging, sqlite3, threading, calendar, socket
-from datetime import datetime, timezone, timedelta, date
+import os, json, hashlib, logging, sqlite3, threading, socket, asyncio
+from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 import xml.etree.ElementTree as ET
-
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-logger = logging.getLogger("funlandia_staff")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("funlandia_staff")
+BOT_TOKEN=os.getenv("BOT_TOKEN","").strip(); PORT=int(os.getenv("PORT","8080")); DB_PATH=os.getenv("STAFF_DB_PATH","staff_attendance.db")
+ADMIN_CHAT_ID=os.getenv("STAFF_ADMIN_CHAT_ID","").strip(); SHIFT_START=os.getenv("SHIFT_START","09:00").strip(); TZ=timezone(timedelta(hours=5))
+MENU=ReplyKeyboardMarkup([["📊 Сегодня","👥 Сейчас на работе"],["📅 Неделя","🗓 Месяц"],["👤 Мои записи","📋 Мой отчёт"],["ℹ️ Помощь"]],resize_keyboard=True)
+SUCCESS={"","1","true","success","succeeded","ok","выполнено","passed"}; IGNORE={"doorstatus","keepalive","heartbeat","pulse"}
+LOOP=None; APP=None
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-PORT = int(os.getenv("PORT", "8080"))
-DB_PATH = os.getenv("STAFF_DB_PATH", "staff_attendance.db")
-ADMIN_CHAT_ID = os.getenv("STAFF_ADMIN_CHAT_ID") or os.getenv("ADMIN_CHAT_ID", "")
-SHIFT_START = os.getenv("SHIFT_START", "09:00")
-LOCAL_TZ = timezone(timedelta(hours=5))
-
-MENU = ReplyKeyboardMarkup([
-    ["📊 Сегодня", "👥 Сейчас на работе"],
-    ["📅 Неделя", "🗓 Месяц"],
-    ["👤 Мои записи", "📋 Мой отчёт"],
-    ["ℹ️ Помощь"],
-], resize_keyboard=True)
-
-SUCCESS = ("", "1", "true", "success", "succeeded", "ok", "выполнено")
-
+def now(): return datetime.now(TZ)
 def db():
-    c = sqlite3.connect(DB_PATH, timeout=30)
-    c.row_factory = sqlite3.Row
-    return c
+    c=sqlite3.connect(DB_PATH,timeout=30); c.row_factory=sqlite3.Row; return c
 
 def init_db():
-    c = db()
-    c.execute("""CREATE TABLE IF NOT EXISTS attendance(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_key TEXT UNIQUE, user_id TEXT, user_name TEXT,
-        event_time TEXT NOT NULL, event_type TEXT, status TEXT,
-        source TEXT DEFAULT 'dahua_http_push', raw_payload TEXT)""")
-    c.execute("""CREATE TABLE IF NOT EXISTS telegram_users(
-        chat_id INTEGER PRIMARY KEY, dahua_user_id TEXT, username TEXT,
-        first_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""")
-    c.execute("CREATE INDEX IF NOT EXISTS idx_attendance_time ON attendance(event_time)")
-    c.execute("CREATE INDEX IF NOT EXISTS idx_attendance_user ON attendance(user_id,event_time)")
-    c.commit(); c.close()
-
-def now_local(): return datetime.now(LOCAL_TZ)
+    c=db(); c.execute("""CREATE TABLE IF NOT EXISTS attendance(id INTEGER PRIMARY KEY AUTOINCREMENT,event_key TEXT UNIQUE NOT NULL,user_id TEXT,user_name TEXT,event_time TEXT NOT NULL,event_type TEXT,status TEXT,method TEXT,direction TEXT,source TEXT NOT NULL,raw_payload TEXT NOT NULL)"""); c.execute("""CREATE TABLE IF NOT EXISTS telegram_users(chat_id INTEGER PRIMARY KEY,dahua_user_id TEXT,username TEXT,first_name TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)"""); c.execute("CREATE INDEX IF NOT EXISTS idx_a ON attendance(user_id,event_time)"); c.commit(); c.close()
 
 def parse_time(v):
-    if v in (None, ""): return now_local().isoformat()
-    s = str(v).strip()
+    if v in (None,""): return now()
+    s=str(v).strip()
     if s.isdigit():
-        try: return datetime.fromtimestamp(int(s), timezone.utc).astimezone(LOCAL_TZ).isoformat()
-        except Exception: pass
-    s = s.replace("Z", "+00:00")
-    for x in (s, s.replace("/", "-")):
         try:
-            d = datetime.fromisoformat(x)
-            if d.tzinfo is None: d = d.replace(tzinfo=LOCAL_TZ)
-            return d.astimezone(LOCAL_TZ).isoformat()
-        except Exception: pass
+            n=int(s)
+            if n>100000000:return datetime.fromtimestamp(n,timezone.utc).astimezone(TZ)
+        except: pass
+    s=s.replace("Z","+00:00")
+    for x in (s,s.replace("/","-")):
+        try:
+            d=datetime.fromisoformat(x); return (d.replace(tzinfo=TZ) if d.tzinfo is None else d).astimezone(TZ)
+        except: pass
     for f in ("%Y-%m-%d %H:%M:%S","%Y/%m/%d %H:%M:%S","%Y-%m-%dT%H:%M:%S"):
-        try: return datetime.strptime(s,f).replace(tzinfo=LOCAL_TZ).isoformat()
-        except Exception: pass
-    return now_local().isoformat()
+        try:return datetime.strptime(s,f).replace(tzinfo=TZ)
+        except:pass
+    return now()
 
-def first(d, *keys):
-    if not isinstance(d, dict): return ""
+def first(d,*keys):
     for k in keys:
-        if d.get(k) not in (None, ""): return d[k]
+        if isinstance(d,dict) and d.get(k) not in (None,""):return d[k]
     return ""
 
-def flatten(d):
-    if not isinstance(d, dict):
-        return {"user_id":"","user_name":"","event_time":parse_time(""),"event_type":"","status":"","rec_no":""}
-    cand = [d]
-    for k in ("data","Data","event","Event","record","Record","params","paramsData","info","Info"):
-        v = d.get(k)
-        if isinstance(v, dict): cand.append(v)
-        elif isinstance(v, list): cand += [x for x in v if isinstance(x,dict)]
-    for _,v in list(d.items()):
-        if isinstance(v,str) and v.strip().startswith("{"):
-            try:
-                q=json.loads(v); cand.append(q if isinstance(q,dict) else {})
-            except Exception: pass
-    uid=name=tm=typv=status=rec=""
-    for x in cand:
-        uid = uid or str(first(x,"UserID","user_id","userId","personCode","ID","id","No"))
-        name = name or str(first(x,"CardName","UserName","user_name","userIdName","personName","name","Name"))
-        tm = tm or str(first(x,"CreateTime","EventTime","event_time","alarmDate","Time","time"))
-        typv = typv or str(first(x,"Type","EventType","event_type","Action","action","operateType"))
-        status = status or str(first(x,"Status","status","Result","result","ErrorCode","syncFlags"))
-        rec = rec or str(first(x,"RecNo","RecordNo","recordNo","id"))
-    return {"user_id":uid.strip(),"user_name":name.strip(),"event_time":parse_time(tm),"event_type":typv.strip(),"status":status.strip(),"rec_no":rec.strip()}
+def info_of(p):
+    if not isinstance(p,dict):return {}
+    n=[p]
+    for k in ("Data","data","Event","event","Record","record","Info","info","Params","params"):
+        v=p.get(k)
+        if isinstance(v,dict):n.append(v)
+        elif isinstance(v,list):n.extend(x for x in v if isinstance(x,dict))
+    z={"user_id":"","user_name":"","event_time":now(),"event_type":"","status":"","method":"","rec_no":"","code":"","action":""}
+    for x in n:
+        z["user_id"] or None
+        z["user_id"]=z["user_id"] or str(first(x,"UserID","userId","user_id","PersonID","personId","EmployeeID","employeeId","personCode","ID"))
+        z["user_name"]=z["user_name"] or str(first(x,"CardName","UserName","userName","user_name","PersonName","personName","Name","name"))
+        t=first(x,"CreateTime","EventTime","eventTime","event_time","AlarmDate","alarmDate","Time","time","RealTime")
+        if t and z["event_time"]==z["event_time"]: z["event_time"]=parse_time(t)
+        z["event_type"]=z["event_type"] or str(first(x,"Type","EventType","eventType","event_type","OperateType","operateType"))
+        z["status"]=z["status"] or str(first(x,"Status","status","Result","result","ErrorCode","errorCode"))
+        z["method"]=z["method"] or str(first(x,"Method","method","VerifyMethod","verifyMethod"))
+        z["rec_no"]=z["rec_no"] or str(first(x,"RecNo","RecordNo","recordNo","Seq","seq"))
+        z["code"]=z["code"] or str(first(x,"Code","code","EventCode","eventCode")); z["action"]=z["action"] or str(first(x,"Action","action"))
+    return z
 
-def save_event(payload):
-    info=flatten(payload)
-    if not info["user_id"] and not info["user_name"]: return False,info
-    raw=json.dumps(payload,ensure_ascii=False,default=str,sort_keys=True)
-    base="|".join(info[k] for k in ("rec_no","user_id","user_name","event_time","event_type","status"))
-    key=hashlib.sha256((base+"|"+raw).encode()).hexdigest()
-    c=db()
-    cur=c.execute("""INSERT OR IGNORE INTO attendance
-        (event_key,user_id,user_name,event_time,event_type,status,source,raw_payload)
-        VALUES(?,?,?,?,?,?,?,?)""",
-        (key,info["user_id"],info["user_name"],info["event_time"],info["event_type"],info["status"],"dahua_http_push",raw))
-    ins=cur.rowcount==1; c.commit(); c.close(); return ins,info
+def good(i):return i.get("status","").strip().lower() in SUCCESS
+def direction(i):
+    s=(str(i.get("event_type","")+" "+str(i.get("code","")))).lower()
+    if any(x in s for x in ("exit","out","выход","leave")):return "EXIT"
+    if any(x in s for x in ("entry","in","вход","enter")):return "ENTRY"
+    return ""
+def person_event(i):
+    return bool(i.get("user_id") or i.get("user_name")) and i.get("code","").lower() not in IGNORE
 
-def xml_dict(raw):
-    try: root=ET.fromstring(raw.decode("utf-8","replace"))
-    except Exception: return {}
-    out={}
-    for e in root.iter():
-        if e is not root and (e.text or "").strip(): out[e.tag.split("}")[-1]]=(e.text or "").strip()
-    return out
+def insert(p):
+    i=info_of(p)
+    if not person_event(i):return False,i
+    raw=json.dumps(p,ensure_ascii=False,sort_keys=True,default=str); base="|".join(str(i[k]) for k in ("rec_no","user_id","user_name","event_time","event_type","status","method","code")); key=hashlib.sha256((base+"|"+raw).encode()).hexdigest()
+    c=db(); cur=c.execute("INSERT OR IGNORE INTO attendance(event_key,user_id,user_name,event_time,event_type,status,method,direction,source,raw_payload) VALUES(?,?,?,?,?,?,?,?,?,?)",(key,i["user_id"],i["user_name"],i["event_time"].isoformat(),i["event_type"],i["status"],i["method"],"","dahua_http_push",raw)); okins=cur.rowcount==1; c.commit(); c.close(); return okins,i
 
-def parse_text(s):
-    out={}
-    for line in re.split(r"\r?\n",s):
-        line=line.strip()
-        if "=" in line:
-            k,v=line.split("=",1); out[k.strip()]=v.strip()
-    return out
+def resolve(uid,t,explicit):
+    if explicit:return explicit
+    c=db(); r=c.execute("SELECT COUNT(*) n FROM attendance WHERE user_id=? AND event_time<? AND (status IS NULL OR status='' OR lower(status) IN (%s))"%(",".join("?" for _ in SUCCESS)),[str(uid),t.isoformat(),*SUCCESS]).fetchone(); c.close(); return "EXIT" if r["n"]%2 else "ENTRY"
+def duplicate(uid,t):
+    c=db(); r=c.execute("SELECT event_time FROM attendance WHERE user_id=? AND event_time<? ORDER BY event_time DESC,id DESC LIMIT 1",(str(uid),t.isoformat())).fetchone(); c.close()
+    if not r:return False
+    try:return abs((t-datetime.fromisoformat(r["event_time"])).total_seconds())<60
+    except:return False
 
-def parse_body(raw,ct=""):
-    if not raw: return {}
+def schedule(i):
+    if not LOOP or not APP or not good(i):return
+    asyncio.run_coroutine_threadsafe(notify(i),LOOP)
+async def notify(i):
+    uid=i["user_id"]
+    if not uid or duplicate(uid,i["event_time"]):return
+    d=resolve(uid,i["event_time"],direction(i)); c=db(); c.execute("UPDATE attendance SET direction=? WHERE user_id=? AND event_time=?",(d,uid,i["event_time"].isoformat())); links=c.execute("SELECT chat_id FROM telegram_users WHERE dahua_user_id=?",(uid,)).fetchall(); c.commit(); c.close()
+    targets={int(x["chat_id"]) for x in links};
+    if ADMIN_CHAT_ID:
+        try:targets.add(int(ADMIN_CHAT_ID))
+        except:pass
+    text=("🟢 <b>ВХОД</b>" if d=="ENTRY" else "🔴 <b>ВЫХОД</b>")+f"\n\n👤 {i['user_name'] or uid}\n🆔 ID: {uid}\n🕐 {i['event_time'].strftime('%d.%m.%Y %H:%M:%S')}"
+    if i["method"]:text+=f"\n🔐 Метод: {i['method']}"
+    for chat in targets:
+        try:await APP.bot.send_message(chat_id=chat,text=text,parse_mode="HTML")
+        except Exception:log.exception("telegram send failed chat=%s",chat)
+
+def body(raw,ct):
+    if not raw:return {}
     s=raw.decode("utf-8","replace").strip(); ct=(ct or "").lower()
-    if "json" in ct or s.startswith("{") or s.startswith("["):
-        try: return json.loads(s)
-        except Exception: pass
+    if "json" in ct or s.startswith(("{","[")):
+        try:return json.loads(s)
+        except:pass
     if "xml" in ct or s.startswith("<"):
-        x=xml_dict(raw)
-        if x:return x
+        try:
+            root=ET.fromstring(s); return {e.tag.split("}")[-1]:(e.text or "").strip() for e in root.iter() if e is not root and (e.text or "").strip()}
+        except:pass
     if "multipart/" in ct:
-        for p in re.split(rb"\r?\n--[^\r\n]+",raw):
-            pos=p.find(b"\r\n\r\n"); step=4
-            if pos<0: pos=p.find(b"\n\n"); step=2
-            if pos>=0:
-                b=p[pos+step:].strip()
-                if b.startswith(b"{"):
-                    try:return json.loads(b.decode("utf-8","replace"))
-                    except Exception:pass
-                x=parse_text(b.decode("utf-8","replace"))
-                if x:return x
-        return {"raw":s[:20000]}
+        for part in raw.split(b"\r\n--"):
+            p=part.find(b"\r\n\r\n")
+            if p>=0:
+                try:return json.loads(part[p+4:].strip().rstrip(b"-"))
+                except:pass
     q=parse_qs(s,keep_blank_values=True)
-    if q:return {k:(v[-1] if v else "") for k,v in q.items()}
-    return parse_text(s) or {"raw":s[:20000]}
+    if q:return {k:v[-1] if v else "" for k,v in q.items()}
+    out={}
+    for line in s.splitlines():
+        if "=" in line:
+            k,v=line.split("=",1);out[k.strip()]=v.strip()
+    return out or {"raw":s[:20000]}
 
-def payloads(p):
-    if not isinstance(p,dict): return []
-    for k in ("events","Events","records","Records"):
-        if isinstance(p.get(k),list): return [x for x in p[k] if isinstance(x,dict)]
+def plist(p):
+    if isinstance(p,list):return [x for x in p if isinstance(x,dict)]
+    if not isinstance(p,dict):return []
+    for k in ("Events","events","Records","records"):
+        if isinstance(p.get(k),list):return [x for x in p[k] if isinstance(x,dict)]
     return [p]
 
-def typ(v):
-    s=str(v or "").strip().lower()
-    if s in ("entry","вход","in","1"): return "Entry"
-    if s in ("exit","выход","out","2"): return "Exit"
-    return ""
-
-def ok(v): return str(v or "").strip().lower() in SUCCESS
-
-def dt(v):
-    try:return datetime.fromisoformat(str(v).replace("Z","+00:00"))
-    except Exception:return None
-
-def day_rows(day,uid=None):
-    c=db(); w=["event_time LIKE ?"]; a=[day+"%"]
-    w.append("(status IS NULL OR status='' OR lower(status) IN ("+",".join("?" for _ in SUCCESS)+"))"); a += list(SUCCESS)
-    if uid: w.append("user_id=?"); a.append(str(uid))
-    rows=c.execute("SELECT * FROM attendance WHERE "+" AND ".join(w)+" ORDER BY event_time,id",a).fetchall(); c.close(); return rows
-
-def state(rows):
-    ev=[r for r in rows if ok(r["status"])]
-    present=False; first_in=None; last_out=None; worked=0; opened=None
-    directional=any(typ(r["event_type"]) for r in ev)
-    for r in ev:
-        d=dt(r["event_time"]); t=typ(r["event_type"])
-        if not d: continue
-        if t=="Entry":
-            if first_in is None:first_in=d
-            if opened is None:opened=d
-            present=True
-        elif t=="Exit":
-            last_out=d
-            if opened and d>=opened: worked+=int((d-opened).total_seconds()); opened=None
-            present=False
-        elif not directional:
-            if first_in is None:first_in=d
-            if present:
-                last_out=d
-                if opened and d>=opened: worked+=int((d-opened).total_seconds())
-                opened=None; present=False
-            else: opened=d; present=True
-    if opened: worked+=max(0,int((now_local()-opened).total_seconds()))
-    return {"present":present,"first":first_in,"last_exit":last_out,"worked":worked,"events":ev}
-
-def people_day(day):
-    groups={}
-    for r in day_rows(day): groups.setdefault(str(r["user_id"] or r["user_name"] or "?"),[]).append(r)
-    out=[]
-    for uid,rs in groups.items():
-        s=state(rs); out.append({"id":uid,"name":rs[-1]["user_name"] or uid,**s})
-    out.sort(key=lambda x:(not x["present"],x["name"].lower())); return out
-
-def late(first_in):
-    if not first_in:return None
-    try:
-        h,m=map(int,SHIFT_START.split(":")); start=first_in.replace(hour=h,minute=m,second=0,microsecond=0)
-        return max(0,int((first_in-start).total_seconds()//60))
-    except Exception:return None
-
-def fmt_time(d): return d.strftime("%H:%M") if d else "—"
-def fmt_dur(s):
-    h,m=divmod(max(0,int(s or 0)),3600); m//=60
-    return f"{h} ч {m:02d} мин" if h else f"{m} мин"
-
-def ranges():
-    t=now_local().date(); mon=t-timedelta(days=t.weekday())
-    return mon.isoformat(),(mon+timedelta(days=6)).isoformat(),t.replace(day=1).isoformat(),t.replace(day=calendar.monthrange(t.year,t.month)[1]).isoformat()
-
-def period(start,end):
-    out={}; d=date.fromisoformat(start); e=date.fromisoformat(end)
-    while d<=e:
-        for p in people_day(d.isoformat()):
-            x=out.setdefault(p["id"],{"id":p["id"],"name":p["name"],"days":0,"worked":0,"late_days":0,"late_minutes":0})
-            x["name"]=p["name"]; x["days"]+=1; x["worked"]+=p["worked"]; l=late(p["first"])
-            if l and l>0:x["late_days"]+=1; x["late_minutes"]+=l
-        d+=timedelta(days=1)
-    return sorted(out.values(),key=lambda x:x["name"].lower())
-
-def dashboard(day=None):
-    day=day or now_local().strftime("%Y-%m-%d"); ps=people_day(day); pr=[p for p in ps if p["present"]]
-    lines=[f"📊 FUNLANDIA — {day}","",f"👥 Всего отметились: {len(ps)}",f"🟢 Сейчас на работе: {len(pr)}",f"🔴 Уже ушли: {len(ps)-len(pr)}"]
-    if pr: lines += ["","🟢 СЕЙЧАС НА РАБОТЕ"]+[f"• {p['name']} — с {fmt_time(p['first'])}" for p in pr]
-    gone=[p for p in ps if not p["present"]]
-    if gone: lines += ["","🔴 УШЛИ"]+[f"• {p['name']} — до {fmt_time(p['last_exit'])}" for p in gone]
-    return "\n".join(lines)
-
-def report_period(start,end,title):
-    ps=period(start,end)
-    if not ps:return f"📊 {title}\n\nЗа этот период записей нет."
-    total=sum(p["worked"] for p in ps); late_count=sum(bool(p["late_days"]) for p in ps)
-    lines=[f"📊 {title}",f"📅 {start} — {end}","",f"👥 Сотрудников с отметками: {len(ps)}",f"⏱ Общее отработанное время: {fmt_dur(total)}",f"⚠️ Сотрудников с опозданиями: {late_count}",""]
-    for p in ps:
-        z=f" | ⚠️ опозданий: {p['late_days']} ({p['late_minutes']} мин)" if p["late_days"] else ""
-        lines += [f"👤 {p['name']}",f"   Рабочих дней: {p['days']} | Отработано: {fmt_dur(p['worked'])}{z}",""]
-    return "\n".join(lines).strip()
-
-def admin(u): return bool(ADMIN_CHAT_ID and str(u.effective_chat.id)==str(ADMIN_CHAT_ID))
-
-async def send_long(u,text):
-    for i in range(0,len(text),3900): await u.message.reply_text(text[i:i+3900],reply_markup=MENU)
-
-async def start(u,c):
-    now=now_local().isoformat(); x=u.effective_user; con=db()
-    con.execute("""INSERT INTO telegram_users(chat_id,username,first_name,created_at,updated_at)
-        VALUES(?,?,?,?,?) ON CONFLICT(chat_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,updated_at=excluded.updated_at""",
-        (u.effective_chat.id,x.username if x else "",x.first_name if x else "",now,now)); con.commit(); con.close()
-    await u.message.reply_text("👷 FUNLANDIA — БОТ СОТРУДНИКОВ\n\nDahua подключается напрямую.\nДоступны присутствие и отчёты за день, неделю и месяц.",reply_markup=MENU)
-
-async def help_cmd(u,c):
-    await u.message.reply_text("ℹ️ Меню:\n📊 Сегодня — сводка\n👥 Сейчас на работе — кто внутри\n📅 Неделя / 🗓 Месяц — отчёты руководителя\n👤 Мои записи — отметки сотрудника\n📋 Мой отчёт — личная сводка\n\nДля привязки: руководитель использует /link ID",reply_markup=MENU)
-
-async def today_cmd(u,c): await u.message.reply_text(dashboard(),reply_markup=MENU)
-
-async def presence(u,c):
-    ps=[p for p in people_day(now_local().strftime("%Y-%m-%d")) if p["present"]]
-    text="👥 СЕЙЧАС НА РАБОТЕ\n\n"+("\n".join(f"• {p['name']} — с {fmt_time(p['first'])}" for p in ps) if ps else "Сейчас никто не отмечен на работе.")
-    await u.message.reply_text(text,reply_markup=MENU)
-
-async def week(u,c):
-    if not admin(u): return await u.message.reply_text("🔒 Недельный отчёт доступен руководителю.",reply_markup=MENU)
-    a,b,_,_=ranges(); await send_long(u,report_period(a,b,"НЕДЕЛЬНЫЙ ОТЧЁТ СОТРУДНИКОВ"))
-
-async def month(u,c):
-    if not admin(u): return await u.message.reply_text("🔒 Месячный отчёт доступен руководителю.",reply_markup=MENU)
-    _,_,a,b=ranges(); await send_long(u,report_period(a,b,"МЕСЯЧНЫЙ ОТЧЁТ СОТРУДНИКОВ"))
-
-def linked(chat):
-    c=db(); r=c.execute("SELECT dahua_user_id FROM telegram_users WHERE chat_id=?",(chat,)).fetchone(); c.close()
-    return r["dahua_user_id"] if r and r["dahua_user_id"] else None
-
-async def link(u,c):
-    if ADMIN_CHAT_ID and not admin(u): return await u.message.reply_text("🔒 Привязку выполняет руководитель.",reply_markup=MENU)
-    if not c.args:return await u.message.reply_text("Использование: /link ID",reply_markup=MENU)
-    uid=c.args[0].strip(); now=now_local().isoformat(); x=u.effective_user; con=db()
-    con.execute("""INSERT INTO telegram_users(chat_id,dahua_user_id,username,first_name,created_at,updated_at)
-        VALUES(?,?,?,?,?,?) ON CONFLICT(chat_id) DO UPDATE SET dahua_user_id=excluded.dahua_user_id,updated_at=excluded.updated_at""",
-        (u.effective_chat.id,uid,x.username if x else "",x.first_name if x else "",now,now))
-    r=con.execute("SELECT user_name FROM attendance WHERE user_id=? AND user_name<>'' ORDER BY id DESC LIMIT 1",(uid,)).fetchone(); con.commit(); con.close()
-    await u.message.reply_text(f"✅ Telegram привязан к {r['user_name'] if r else uid} (ID {uid}).",reply_markup=MENU)
-
-async def me(u,c):
-    uid=linked(u.effective_chat.id)
-    if not uid:return await u.message.reply_text("Ваш Telegram пока не привязан. Руководитель: /link ID",reply_markup=MENU)
-    rows=day_rows(now_local().strftime("%Y-%m-%d"),uid)
-    if not rows:return await u.message.reply_text("Сегодня отметок пока нет.",reply_markup=MENU)
-    text="👤 Мои записи\n\n"+"\n".join(f"• {fmt_time(dt(r['event_time']))} — {r['event_type'] or 'Отметка'} — {r['status'] or 'Выполнено'}" for r in rows)
-    await u.message.reply_text(text,reply_markup=MENU)
-
-async def report(u,c):
-    uid=linked(u.effective_chat.id)
-    if not uid:return await u.message.reply_text("Ваш Telegram пока не привязан. Руководитель: /link ID",reply_markup=MENU)
-    rows=day_rows(now_local().strftime("%Y-%m-%d"),uid); s=state(rows)
-    name=rows[-1]["user_name"] if rows else uid
-    text=f"📋 Мой отчёт — {name}\n\nВход: {fmt_time(s['first'])}\nВыход: {fmt_time(s['last_exit'])}\nОтработано: {fmt_dur(s['worked'])}\nСтатус: {'🟢 на работе' if s['present'] else '🔴 не на работе'}"
-    l=late(s["first"])
-    if l and l>0:text+=f"\nОпоздание: {l} мин"
-    await u.message.reply_text(text,reply_markup=MENU)
-
-async def last(u,c):
-    if not admin(u): return await u.message.reply_text("🔒 Последние записи доступны руководителю.",reply_markup=MENU)
-    con=db(); rows=con.execute("SELECT * FROM attendance ORDER BY id DESC LIMIT 20").fetchall(); con.close()
-    if not rows:return await u.message.reply_text("Записей пока нет.",reply_markup=MENU)
-    text="📌 Последние записи\n\n"+"\n".join(f"• {fmt_time(dt(r['event_time']))} {r['user_name'] or r['user_id']} — {r['event_type'] or 'Отметка'}" for r in rows)
-    await u.message.reply_text(text,reply_markup=MENU)
-
-async def buttons(u,c):
-    t=(u.message.text or "").strip()
-    if t=="📊 Сегодня": return await today_cmd(u,c)
-    if t=="👥 Сейчас на работе": return await presence(u,c)
-    if t=="📅 Неделя": return await week(u,c)
-    if t=="🗓 Месяц": return await month(u,c)
-    if t=="👤 Мои записи": return await me(u,c)
-    if t=="📋 Мой отчёт": return await report(u,c)
-    if t=="ℹ️ Помощь": return await help_cmd(u,c)
-    await u.message.reply_text("Выберите пункт меню.",reply_markup=MENU)
-
 class DahuaHandler(BaseHTTPRequestHandler):
-    protocol_version="HTTP/1.1"
-    server_version="FUNLANDIA-STAFF/2.0"
+    protocol_version="HTTP/1.1"; server_version="FUNLANDIA-STAFF/4.0"
     def reply(self,code=200,text="OK"):
         b=text.encode()
-        try:
-            self.send_response(code)
-            self.send_header("Content-Type","text/plain; charset=utf-8")
-            self.send_header("Content-Length",str(len(b)))
-            self.send_header("Connection","close")
-            self.end_headers()
-            self.wfile.write(b); self.wfile.flush()
-        except Exception: pass
-
-    def read_body(self):
-        expect=self.headers.get("Expect","").lower()
-        if "100-continue" in expect:
-            try:
-                self.send_response_only(100); self.end_headers()
-            except Exception: pass
-        te=self.headers.get("Transfer-Encoding","").lower()
-        if "chunked" in te: return self.read_chunked()
-        try:n=int(self.headers.get("Content-Length","0") or 0)
-        except ValueError:n=0
-        if n<=0:return b""
-        data=b""; old_timeout=self.connection.gettimeout()
-        try:
-            self.connection.settimeout(8.0)
-            while len(data)<n:
-                chunk=self.rfile.read(n-len(data))
-                if not chunk:break
-                data+=chunk
-        except (socket.timeout,TimeoutError,OSError) as e:
-            logger.warning("DAHUA body read incomplete expected=%s got=%s error=%s",n,len(data),e)
-        finally:
-            try:self.connection.settimeout(old_timeout)
-            except Exception:pass
-        return data
-
+        try:self.send_response(code);self.send_header("Content-Type","text/plain; charset=utf-8");self.send_header("Content-Length",str(len(b)));self.send_header("Connection","close");self.end_headers();self.wfile.write(b);self.wfile.flush()
+        except:pass
     def read_chunked(self):
         out=[]
         while True:
-            line=self.rfile.readline(65536)
-            if not line:break
-            try:n=int(line.strip().split(b";",1)[0],16)
-            except Exception:break
-            if n==0:
-                self.rfile.readline()
-                break
-            out.append(self.rfile.read(n)); self.rfile.read(2)
+            line=self.rfile.readline().strip()
+            if not line:continue
+            try:n=int(line.split(b";",1)[0],16)
+            except:break
+            if n==0:break
+            out.append(self.rfile.read(n));self.rfile.read(2)
         return b"".join(out)
-
-    def event_from_query_headers(self):
-        p=parse_qs(urlparse(self.path).query,keep_blank_values=True)
-        d={k:(v[-1] if v else "") for k,v in p.items()}
-        for k,v in self.headers.items():
-            nk=re.sub(r"[^a-z0-9_]","",k.lower())
-            if nk in {"userid","user_id","username","cardname","eventtime","eventtype","type","status","recno","recordno","createtime","time","action"} and v:
-                d[k]=v
-        return d
-
-    def process(self,raw):
-        ct=self.headers.get("Content-Type","")
-        p=parse_body(raw,ct) if raw else self.event_from_query_headers()
-        if not p:return 0
-        n=0
-        for e in payloads(p):
-            ins,info=save_event(e); n+=int(ins)
-            if info["user_id"] or info["user_name"]:
-                logger.info("DAHUA EVENT inserted=%s id=%s name=%s time=%s type=%s status=%s",ins,info["user_id"],info["user_name"],info["event_time"],info["event_type"],info["status"])
-        return n
-
-    def do_GET(self):
-        path=urlparse(self.path).path
-        logger.info("DAHUA GET path=%s",path)
-        if "keepalive" not in path.lower():self.process(b"")
-        self.reply(200,"FUNLANDIA STAFF OK" if path.startswith("/health") else "OK")
-
-    def do_POST(self):
+    def read_body(self):
+        if "chunked" in self.headers.get("Transfer-Encoding","").lower():return self.read_chunked()
+        try:n=int(self.headers.get("Content-Length","0") or 0)
+        except:n=0
+        if n<=0:return b""
+        old=self.connection.gettimeout(); self.connection.settimeout(10); data=b""
         try:
-            raw=self.read_body(); path=urlparse(self.path).path
-            preview=raw[:2000].decode("utf-8","replace") if raw else ""
-            logger.info("DAHUA POST path=%s content-type=%s transfer=%s content-length=%s body-bytes=%s body-preview=%r",path,self.headers.get("Content-Type",""),self.headers.get("Transfer-Encoding",""),self.headers.get("Content-Length",""),len(raw),preview)
-            if "keepalive" not in path.lower():logger.info("DAHUA PUSH processed=%s new-events=%s",path,self.process(raw))
-            self.reply(200,"OK")
-        except Exception as e:
-            logger.exception("DAHUA webhook error: %s",e)
-            try:self.reply(200,"OK")
-            except Exception:pass
+            while len(data)<n:
+                x=self.rfile.read(n-len(data))
+                if not x:break
+                data+=x
+        except:log.exception("body read")
+        finally:
+            try:self.connection.settimeout(old)
+            except:pass
+        return data
+    def do_GET(self):
+        log.info("GET %s",urlparse(self.path).path);self.reply(200,"FUNLANDIA STAFF OK")
+    def do_POST(self):
+        raw=self.read_body(); path=urlparse(self.path).path; log.info("POST %s type=%s bytes=%s preview=%r",path,self.headers.get("Content-Type",""),len(raw),raw[:2000].decode("utf-8","replace"))
+        count=0
+        try:
+            for p in plist(body(raw,self.headers.get("Content-Type",""))):
+                ins,i=insert(p)
+                if i.get("user_id") or i.get("user_name"):log.info("DAHUA EVENT inserted=%s id=%s name=%s time=%s code=%s type=%s status=%s method=%s",ins,i["user_id"],i["user_name"],i["event_time"].isoformat(),i["code"],i["event_type"],i["status"],i["method"])
+                if ins:count+=1;schedule(i)
+        except Exception:log.exception("Dahua processing")
+        log.info("DAHUA PUSH processed=%s new-events=%s",path,count);self.reply(200,"OK")
+    def log_message(self,*a):pass
 
-    def log_message(self,*args):pass
+def http_server():ThreadingHTTPServer(("0.0.0.0",PORT),DahuaHandler).serve_forever()
+def on_start(app):
+    global LOOP,APP;LOOP=asyncio.get_running_loop();APP=app
 
-def http_server():
-    s=ThreadingHTTPServer(("0.0.0.0",PORT),DahuaHandler)
-    s.daemon_threads=True
-    logger.info("DAHUA HTTP PUSH SERVER LISTENING ON %s",PORT)
-    s.serve_forever()
+def link_id(update,context):
+    pass
+
+async def start(update,context):
+    u=update.effective_user;t=now().isoformat();c=db();c.execute("INSERT INTO telegram_users(chat_id,username,first_name,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(chat_id) DO UPDATE SET username=excluded.username,first_name=excluded.first_name,updated_at=excluded.updated_at",(update.effective_chat.id,u.username if u else "",u.first_name if u else "",t,t));c.commit();c.close();await update.message.reply_text("👷 <b>FUNLANDIA — БОТ СОТРУДНИКОВ</b>\n\nDahua подключён напрямую.\nВыберите раздел ниже.",parse_mode="HTML",reply_markup=MENU)
+async def help_cmd(update,context):await update.message.reply_text("/link ID — привязать Telegram к сотруднику Dahua\n/me — мои записи\n/report YYYY-MM-DD — дневной отчёт\n/last — последние события",reply_markup=MENU)
+async def link(update,context):
+    if ADMIN_CHAT_ID and str(update.effective_chat.id)!=ADMIN_CHAT_ID:return await update.message.reply_text("🔒 Привязку выполняет руководитель.",reply_markup=MENU)
+    if not context.args:return await update.message.reply_text("Использование: /link ID",reply_markup=MENU)
+    uid=context.args[0].strip();u=update.effective_user;t=now().isoformat();c=db();c.execute("INSERT INTO telegram_users(chat_id,dahua_user_id,username,first_name,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(chat_id) DO UPDATE SET dahua_user_id=excluded.dahua_user_id,updated_at=excluded.updated_at",(update.effective_chat.id,uid,u.username if u else "",u.first_name if u else "",t,t));c.commit();c.close();await update.message.reply_text(f"✅ Telegram привязан к ID Dahua <b>{uid}</b>.",parse_mode="HTML",reply_markup=MENU)
+def linked(chat):
+    c=db();r=c.execute("SELECT dahua_user_id FROM telegram_users WHERE chat_id=?",(chat,)).fetchone();c.close();return r["dahua_user_id"] if r else None
+
+def day_rows(day,uid=None):
+    c=db();sql="SELECT * FROM attendance WHERE event_time LIKE ?";a=[day+"%"]
+    if uid:sql+=" AND user_id=?";a.append(str(uid))
+    rows=c.execute(sql+" ORDER BY event_time,id",a).fetchall();c.close();return [r for r in rows if (r["status"] or "").lower() in SUCCESS]
+def presence(uid,day):
+    rs=day_rows(day,uid);opened=None;first=None;worked=0
+    for r in rs:
+        t=datetime.fromisoformat(r["event_time"]);d=r["direction"] or direction({"event_type":r["event_type"],"code":""})
+        if not d:d="ENTRY" if opened is None else "EXIT"
+        if d=="ENTRY":
+            first=first or t;opened=t
+        elif opened:
+            if t>=opened:worked+=int((t-opened).total_seconds())
+            opened=None
+    if opened:worked+=max(0,int((now()-opened).total_seconds()))
+    return bool(opened),first,datetime.fromisoformat(rs[-1]["event_time"]) if rs and not opened else None,worked
+def dur(s):
+    h,m=divmod(max(0,int(s)),3600);m//=60;return f"{h} ч {m:02d} мин" if h else f"{m} мин"
+
+async def me(update,context):
+    uid=linked(update.effective_chat.id)
+    if not uid:return await update.message.reply_text("🔗 Telegram ещё не привязан. Руководитель: /link ID",reply_markup=MENU)
+    day=now().strftime("%Y-%m-%d");rs=day_rows(day,uid);c=db();r=c.execute("SELECT user_name FROM attendance WHERE user_id=? ORDER BY id DESC LIMIT 1",(uid,)).fetchone();c.close();name=r["user_name"] if r and r["user_name"] else uid;present,first,last,w=presence(uid,day)
+    text=f"👤 <b>{name}</b>\n📅 {now().strftime('%d.%m.%Y')}\n\n"+"\n".join(f"• {datetime.fromisoformat(x['event_time']).strftime('%H:%M:%S')} — {x['direction'] or 'проход'}" for x in rs)+f"\n\n⏱ Отработано: {dur(w)}\nСостояние: {'🟢 на работе' if present else '🔴 не на работе'}"
+    await update.message.reply_text(text,parse_mode="HTML",reply_markup=MENU)
+async def today(update,context):
+    day=now().strftime("%Y-%m-%d");c=db();ids=c.execute("SELECT DISTINCT user_id FROM attendance WHERE event_time LIKE ? AND user_id<>''",(day+"%",)).fetchall();c.close();cur=[]
+    for x in ids:
+        p,f,_,_=presence(x["user_id"],day)
+        if p:
+            c=db();r=c.execute("SELECT user_name FROM attendance WHERE user_id=? ORDER BY id DESC LIMIT 1",(x["user_id"],)).fetchone();c.close();cur.append((r["user_name"] if r and r["user_name"] else x["user_id"],f))
+    text=f"📊 <b>Сегодня</b>\n\n👥 Отметились: {len(ids)}\n🟢 Сейчас на работе: {len(cur)}"+(("\n\n"+"\n".join(f"• {n} — с {t.strftime('%H:%M')}" for n,t in cur)) if cur else "")
+    await update.message.reply_text(text,parse_mode="HTML",reply_markup=MENU)
+async def current(update,context):return await today(update,context)
+async def report(update,context):
+    if not ADMIN_CHAT_ID or str(update.effective_chat.id)!=ADMIN_CHAT_ID:return await update.message.reply_text("🔒 Отчёт доступен руководителю.",reply_markup=MENU)
+    day=context.args[0] if context.args else now().strftime("%Y-%m-%d");c=db();ids=c.execute("SELECT DISTINCT user_id FROM attendance WHERE event_time LIKE ? AND user_id<>''",(day+"%",)).fetchall();c.close();lines=[f"📋 <b>Отчёт {day}</b>",""]
+    for x in ids:
+        p,f,l,w=presence(x["user_id"],day);c=db();r=c.execute("SELECT user_name FROM attendance WHERE user_id=? ORDER BY id DESC LIMIT 1",(x["user_id"],)).fetchone();c.close();n=r["user_name"] if r and r["user_name"] else x["user_id"];lines.append(f"👤 {n} (ID {x['user_id']})\n   Вход: {f.strftime('%H:%M') if f else '—'} | Выход: {l.strftime('%H:%M') if l else '—'} | {dur(w)}")
+    await update.message.reply_text("\n".join(lines),parse_mode="HTML",reply_markup=MENU)
+async def week(update,context):
+    if not ADMIN_CHAT_ID or str(update.effective_chat.id)!=ADMIN_CHAT_ID:return await update.message.reply_text("🔒 Отчёт доступен руководителю.",reply_markup=MENU)
+    await update.message.reply_text("📅 Недельный отчёт: используйте /report YYYY-MM-DD для конкретного дня. Расширенный сводный отчёт подключается после первых реальных событий.",reply_markup=MENU)
+async def month(update,context):
+    if not ADMIN_CHAT_ID or str(update.effective_chat.id)!=ADMIN_CHAT_ID:return await update.message.reply_text("🔒 Отчёт доступен руководителю.",reply_markup=MENU)
+    await update.message.reply_text("🗓 Месячный отчёт: система готова собирать данные; сводная форма будет рассчитана из реальных проходов.",reply_markup=MENU)
+async def last(update,context):
+    c=db();rs=c.execute("SELECT * FROM attendance ORDER BY id DESC LIMIT 15").fetchall();c.close();await update.message.reply_text("Записей пока нет." if not rs else "\n".join(f"• {x['event_time'][11:19]} — {x['user_name'] or x['user_id']} — {x['direction'] or x['event_type'] or 'проход'}" for x in rs),reply_markup=MENU)
+async def buttons(update,context):
+    m={"📊 Сегодня":today,"👥 Сейчас на работе":current,"👤 Мои записи":me,"📋 Мой отчёт":report,"📅 Неделя":week,"🗓 Месяц":month,"ℹ️ Помощь":help_cmd};f=m.get(update.message.text.strip());
+    if f:await f(update,context)
 
 def main():
     if not BOT_TOKEN:raise RuntimeError("BOT_TOKEN is not set")
-    init_db(); threading.Thread(target=http_server,daemon=True,name="dahua-http").start()
-    app=Application.builder().token(BOT_TOKEN).build()
-    for cmd,fn in [("start",start),("help",help_cmd),("today",today_cmd),("week",week),("month",month),("link",link),("me",me),("report",report),("last",last)]:app.add_handler(CommandHandler(cmd,fn))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,buttons)); logger.info("FUNLANDIA STAFF BOT STARTED"); app.run_polling(drop_pending_updates=False)
-
+    init_db();threading.Thread(target=http_server,daemon=True).start();app=Application.builder().token(BOT_TOKEN).post_init(on_start).build()
+    for cmd,fn in (("start",start),("help",help_cmd),("link",link),("me",me),("report",report),("week",week),("month",month),("last",last)):app.add_handler(CommandHandler(cmd,fn))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,buttons));log.info("FUNLANDIA STAFF 4.0 STARTED");app.run_polling(drop_pending_updates=False)
 if __name__=="__main__":main()
