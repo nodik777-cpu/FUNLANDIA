@@ -3,11 +3,17 @@ import re
 import subprocess
 import tarfile
 import urllib.request
+import os
 from pathlib import Path
 
 STAFF = Path("staff_bot.py")
 BINARY = Path("/tmp/dh-fwd-bin")
 SRC = Path("/tmp/dh-fwd-src")
+
+# Disable the experimental P2P tunnel for this deployment. We are using the
+# official Dahua HTTP Push path instead; keeping the P2P worker off prevents
+# its repeated DMSS authentication errors from obscuring the useful logs.
+os.environ["DAHUA_P2P_ENABLED"] = "0"
 
 if not BINARY.exists():
     if SRC.exists():
@@ -45,9 +51,6 @@ if not re.search(pattern, s, flags=re.S):
     raise RuntimeError("Could not find the old Dahua P2P command in staff_bot.py")
 s = re.sub(pattern, replacement, s, count=1, flags=re.S)
 
-# Dahua Web 5.0 can send HTTP Push payloads as JSON, form data, XML, or
-# multipart/chunked requests. The old handler only trusted Content-Length and
-# therefore could silently discard chunked/multipart attendance events.
 helper = r'''
 
 def _read_dahua_http_body(handler):
@@ -78,23 +81,17 @@ def _parse_dahua_push(raw, content_type):
     p = parse_body(raw, content_type)
     if p and not (len(p) == 1 and "raw" in p):
         payloads.append(p)
-
-    # Multipart payloads may contain a JSON/XML metadata part plus an image.
-    # Extract only textual JSON/XML/form sections; do not store images.
     if raw and "multipart/" in (content_type or "").lower():
         text = raw.decode("utf-8", "replace")
         for m in re.finditer(r"\{.*?\}", text, re.S):
-            candidate = m.group(0)
             try:
-                payloads.append(json.loads(candidate))
+                payloads.append(json.loads(m.group(0)))
             except Exception:
                 pass
         for m in re.finditer(r"<\?xml.*?</[^>]+>", text, re.S | re.I):
-            candidate = m.group(0)
-            x = parse_xml(candidate.encode("utf-8", "replace"))
+            x = parse_xml(m.group(0).encode("utf-8", "replace"))
             if x:
                 payloads.append(x)
-
     if not payloads and raw:
         s = raw.decode("utf-8", "replace").strip()
         if s:
@@ -117,7 +114,6 @@ post_replacement = '''    def do_POST(self):
             inserted = 0
             for payload in payloads:
                 info = normalize(payload)
-                # DoorStatus/Pulse is only a heartbeat and has no employee record.
                 if info["user_id"] or info["user_name"]:
                     raw_for_db = json.dumps(payload, ensure_ascii=False, sort_keys=True)
                     if save_event(info, raw_for_db, "dahua_http_push"):
