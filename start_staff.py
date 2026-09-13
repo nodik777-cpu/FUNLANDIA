@@ -1,13 +1,68 @@
 import os
 import re
 import json
+import subprocess
+import shutil
 from pathlib import Path
 
-# Staff Bot uses Dahua HTTP Push. Keep the experimental P2P tunnel disabled.
-os.environ["DAHUA_P2P_ENABLED"] = "0"
+# Staff Bot: HTTP Push + Dahua DMSS P2P tunnel.
+# Main Funlandia bot is not touched.
+os.environ["DAHUA_P2P_ENABLED"] = "1"
+os.environ.setdefault("DAHUA_P2P_APP", "dmss")
+
+# Build a tiny patched copy of the current dh-fwd client. The device reports
+# an empty /info/device Info blob; upstream documents that this means no
+# RandSalt and that the RandSalt XML tag must be omitted. The current client
+# still fails closed on that exact case, so we patch only those two points.
+def prepare_p2p():
+    if not shutil.which("go") or not shutil.which("git"):
+        raise RuntimeError("Go/git are not available")
+    root = Path("/tmp/dh-fwd")
+    if not (root / ".git").exists():
+        subprocess.run(["git", "clone", "--depth", "1", "https://github.com/undervolter/dh-fwd.git", str(root)], check=True, timeout=120)
+    else:
+        subprocess.run(["git", "-C", str(root), "fetch", "--depth", "1", "origin", "main"], check=False, timeout=60)
+        subprocess.run(["git", "-C", str(root), "reset", "--hard", "origin/main"], check=False, timeout=30)
+
+    helpers = root / "helpers.go"
+    hs = helpers.read_text(encoding="utf-8")
+    old = '''\treturn fmt.Sprintf(\n\t\t"<CreateDate>%d</CreateDate><DevAuth>%s</DevAuth><Nonce>%d</Nonce><RandSalt>%s</RandSalt><UserName>%s</UserName>",\n\t\tcreated, auth, nonce, salt, username)'''
+    new = '''\trandSaltTag := ""\n\tif salt != "" {\n\t\trandSaltTag = fmt.Sprintf("<RandSalt>%s</RandSalt>", salt)\n\t}\n\treturn fmt.Sprintf(\n\t\t"<CreateDate>%d</CreateDate><DevAuth>%s</DevAuth><Nonce>%d</Nonce>%s<UserName>%s</UserName>",\n\t\tcreated, auth, nonce, randSaltTag, username)'''
+    if old in hs:
+        hs = hs.replace(old, new, 1)
+    helpers.write_text(hs, encoding="utf-8")
+
+    tunnel = root / "tunnel.go"
+    ts = tunnel.read_text(encoding="utf-8")
+    old2 = '''\tif err != nil {\n\t\tif required {\n\t\t\treturn "", fmt.Errorf("randsalt: %v", err)\n\t\t}\n\t\tlogf("%s profile: randsalt from the Info blob unavailable (%v) — continuing", prof.name, err)\n\t\treturn randsalt, nil\n\t}'''
+    new2 = '''\tif err != nil {\n\t\tif required && (strings.Contains(err.Error(), "Info field absent") || strings.Contains(err.Error(), "randsalt absent from the Info blob")) {\n\t\t\tlogf("%s profile: Info blob has no RandSalt; using empty salt and omitting RandSalt tag", prof.name)\n\t\t\treturn "", nil\n\t\t}\n\t\tif required {\n\t\t\treturn "", fmt.Errorf("randsalt: %v", err)\n\t\t}\n\t\tlogf("%s profile: randsalt from the Info blob unavailable (%v) — continuing", prof.name, err)\n\t\treturn randsalt, nil\n\t}'''
+    if old2 in ts:
+        ts = ts.replace(old2, new2, 1)
+    tunnel.write_text(ts, encoding="utf-8")
+
+    out = Path("/tmp/dh-fwd-funlandia")
+    subprocess.run(["go", "build", "-o", str(out), "."], cwd=str(root), check=True, timeout=180)
+    return str(out)
+
+try:
+    os.environ["DAHUA_P2P_BIN"] = prepare_p2p()
+    print("FUNLANDIA: patched Dahua P2P client built")
+except Exception as e:
+    # Keep the bot alive; the normal upstream command remains available as a fallback.
+    print(f"FUNLANDIA: patched Dahua P2P build failed: {e}")
 
 STAFF = Path("staff_bot.py")
 s = STAFF.read_text(encoding="utf-8")
+
+# Use the locally built patched P2P binary when available.
+old_p2p = re.search(r'def p2p_command\(\):\n.*?(?=\n\ndef p2p_worker\(\):)', s, flags=re.S)
+if old_p2p:
+    new_p2p = '''def p2p_command():
+    binary = os.getenv("DAHUA_P2P_BIN", "").strip()
+    if binary:
+        return [binary, "--app", P2P_APP, "-t", "1", "-u", DAHUA_USER, "-P", DAHUA_PASSWORD, "-p", f"{P2P_LOCAL_PORT}:80", DAHUA_SERIAL]
+    return ["go", "run", "github.com/undervolter/dh-fwd@main", "--app", P2P_APP, "-t", "1", "-u", DAHUA_USER, "-P", DAHUA_PASSWORD, "-p", f"{P2P_LOCAL_PORT}:80", DAHUA_SERIAL]'''
+    s = s[:old_p2p.start()] + new_p2p + s[old_p2p.end():]
 
 # Replace only the HTTP POST handler at runtime so the existing Staff Bot
 # remains otherwise untouched. This handles normal, chunked, JSON, XML,
@@ -48,12 +103,12 @@ new = '''    def do_POST(self):
                     payloads.append(p)
                 text = raw.decode("utf-8", "replace")
                 if "multipart/" in ct.lower():
-                    for m in re.finditer(r"\\{.*?\\}", text, re.S):
+                    for m in re.finditer(r"\{.*?\}", text, re.S):
                         try:
                             payloads.append(json.loads(m.group(0)))
                         except Exception:
                             pass
-                    for m in re.finditer(r"<\\?xml.*?</[^>]+>", text, re.S | re.I):
+                    for m in re.finditer(r"<\?xml.*?</[^>]+>", text, re.S | re.I):
                         try:
                             x = parse_xml(m.group(0).encode("utf-8", "replace"))
                             if x:
@@ -75,7 +130,7 @@ new = '''    def do_POST(self):
             if inserted:
                 log.info("DAHUA PUSH processed=%s new-events=%s", path, inserted)
             elif raw:
-                preview = raw.decode("utf-8", "replace").replace("\\n", " ")[:500]
+                preview = raw.decode("utf-8", "replace").replace("\n", " ")[:500]
                 log.info("DAHUA PUSH no attendance record path=%s preview=%r", path, preview)
             self.reply(200, "OK")
         except Exception as e:
