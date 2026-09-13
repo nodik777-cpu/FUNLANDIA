@@ -1,6 +1,8 @@
-import os
+import io
 import re
 import subprocess
+import tarfile
+import urllib.request
 from pathlib import Path
 
 STAFF = Path("staff_bot.py")
@@ -10,12 +12,22 @@ SRC = Path("/tmp/dh-fwd-src")
 if not BINARY.exists():
     if SRC.exists():
         subprocess.run(["rm", "-rf", str(SRC)], check=True)
-    print("BUILDING Dahua P2P helper...", flush=True)
-    subprocess.run([
-        "git", "clone", "--depth", "1",
-        "https://github.com/undervolter/dh-fwd.git",
-        str(SRC)
-    ], check=True)
+    print("DOWNLOADING Dahua P2P helper...", flush=True)
+    url = "https://github.com/undervolter/dh-fwd/archive/refs/heads/main.tar.gz"
+    data = urllib.request.urlopen(url, timeout=60).read()
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+        members = tar.getmembers()
+        root = next((m for m in members if m.name.endswith("/go.mod")), None)
+        if root is None:
+            raise RuntimeError("Downloaded dh-fwd archive does not contain go.mod")
+        prefix = root.name.rsplit("/", 1)[0]
+        for member in members:
+            if not member.name.startswith(prefix + "/"):
+                continue
+            member.name = member.name[len(prefix) + 1:]
+            if member.name:
+                tar.extract(member, SRC)
+    print("Dahua P2P helper source downloaded", flush=True)
     subprocess.run(["go", "build", "-o", str(BINARY), "."], cwd=str(SRC), check=True)
     BINARY.chmod(0o755)
     print("Dahua P2P helper built successfully", flush=True)
