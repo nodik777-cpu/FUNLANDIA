@@ -220,7 +220,7 @@ def p2p_worker():
         proc=None
         try:
             log.info("Starting Dahua P2P tunnel SN=%s app=%s local_port=%s",DAHUA_SERIAL,P2P_APP,P2P_LOCAL_PORT)
-            proc=subprocess.Popen(p2p_command(),stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
+            proc=subprocess.Popen(p2p_command())
             deadline=time.time()+90
             ready=False
             while time.time()<deadline:
@@ -296,7 +296,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):self.reply(200,"FUNLANDIA STAFF OK")
     def do_POST(self):
         try:
-            n=int(self.headers.get("Content-Length","0") or 0);raw=self.rfile.read(n) if n else b"";p=parse_body(raw,self.headers.get("Content-Type",""))
+            n=int(self.headers.get("Content-Length","0") or 0);raw=self.rfile.read(n) if n else b"";p=parse_body(raw,self.headers.get("Content-Type", ""))
             info=normalize(p)
             if info["user_id"] or info["user_name"]:save_event(info,json.dumps(p,ensure_ascii=False,sort_keys=True),"dahua_http_push")
             self.reply(200,"OK")
