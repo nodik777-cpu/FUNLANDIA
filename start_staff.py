@@ -35,7 +35,10 @@ if not BINARY.exists():
 s = STAFF.read_text(encoding="utf-8")
 pattern = r'def p2p_command\(\):\n    return \["go","run","github\.com/undervolter/dh-fwd@main".*?\n\n\ndef p2p_worker\(\):'
 replacement = '''def p2p_command():
-    return [BINARY_PATH, "--app", P2P_APP, "-t", "1", "-u", DAHUA_USER, "-P", DAHUA_PASSWORD, "-p", f"{P2P_LOCAL_PORT}:80", DAHUA_SERIAL]
+    # First try DMSS without Type-1 auth. This avoids the missing Info/RandSalt
+    # path on this terminal. If the device rejects it, staff_bot will log the
+    # exact P2P failure instead of looping through the broken autosalt step.
+    return [BINARY_PATH, "--app", P2P_APP, "-t", "0", "-p", f"{P2P_LOCAL_PORT}:80", DAHUA_SERIAL]
 
 
 def p2p_worker():'''
