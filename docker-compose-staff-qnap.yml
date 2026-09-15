@@ -1,0 +1,26 @@
+services:
+  staff-bot:
+    image: python:3.11-alpine
+    container_name: funlandia-staff
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: "PASTE_STAFF_BOT_TOKEN"
+      STAFF_ADMIN_CHAT_ID: "PASTE_OWNER_TELEGRAM_ID"
+      STAFF_CONTROL_IDS: ""
+      DAHUA_URL: "https://192.168.1.202"
+      DAHUA_USER: "admin"
+      DAHUA_PASSWORD: "PASTE_DAHUA_PASSWORD"
+      STAFF_DB_PATH: "/data/staff.db"
+      DAHUA_POLL_SECONDS: "10"
+      LUNCH_START: "10:00"
+      LUNCH_END: "15:00"
+      DINNER_START: "17:00"
+      DINNER_END: "22:00"
+      EXTRA_MEAL_COST: "0"
+    volumes:
+      - staff-data:/data
+    command: >-
+      sh -c "apk add --no-cache git && rm -rf /app && git clone --depth 1 https://github.com/nodik777-cpu/FUNLANDIA.git /app && pip install --no-cache-dir -r /app/requirements_staff_qnap.txt && python /app/staff_qnap.py"
+
+volumes:
+  staff-data:
