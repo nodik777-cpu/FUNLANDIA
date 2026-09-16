@@ -1,6 +1,6 @@
 services:
   staff-bot:
-    image: python:3.11-alpine
+    image: python:3.11-slim
     container_name: funlandia-staff
     restart: unless-stopped
     environment:
@@ -20,7 +20,7 @@ services:
     volumes:
       - staff-data:/data
     command: >-
-      sh -c "apk add --no-cache git && rm -rf /app && git clone --depth 1 https://github.com/nodik777-cpu/FUNLANDIA.git /app && pip install --no-cache-dir -r /app/requirements_staff_qnap.txt && python /app/staff_qnap.py"
+      sh -c "apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/* && rm -rf /app && git clone --depth 1 https://github.com/nodik777-cpu/FUNLANDIA.git /app && pip install --no-cache-dir -r /app/requirements_staff_qnap.txt && python /app/staff_qnap.py"
 
 volumes:
   staff-data:
