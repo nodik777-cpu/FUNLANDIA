@@ -17,10 +17,11 @@ services:
       DINNER_START: "17:00"
       DINNER_END: "22:00"
       EXTRA_MEAL_COST: "0"
+      PYTHONUNBUFFERED: "1"
     volumes:
       - staff-data:/data
     command: >-
-      sh -c "apk add --no-cache git && rm -rf /app && git clone --depth 1 https://github.com/nodik777-cpu/FUNLANDIA.git /app && pip install --no-cache-dir -r /app/requirements_staff_qnap.txt && python /app/staff_qnap.py"
+      sh -c "apk add --no-cache git && rm -rf /app && git clone --depth 1 https://github.com/nodik777-cpu/FUNLANDIA.git /app && pip install --no-cache-dir -r /app/requirements_staff_qnap.txt && python -u -c 'import staff_qnap; staff_qnap.main()'"
 
 volumes:
   staff-data:
