@@ -102,16 +102,28 @@ def next_dahua_user_id():
     return str(max(vals+[0])+1)
 
 def ensure_dahua_user(user_id,name):
-    r=requests.get(DAHUA_URL+"/cgi-bin/Attendance.cgi",
-        params={"action":"addUser","UserID":str(user_id),"UserName":str(name)[:32]},
-        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
+    # ASI6XXX access-control devices use recordUpdater.cgi to enroll an access user.
+    # CardNo is required by Dahua's CGI integration even when the user will use face only.
+    uid=str(user_id)
+    params={
+        "action":"insert",
+        "name":"AccessControlCard",
+        "CardName":str(name)[:32],
+        "CardNo":uid,
+        "UserID":uid,
+        "CardStatus":"0",
+        "CardType":"0"
+    }
+    r=requests.get(DAHUA_URL+"/cgi-bin/recordUpdater.cgi",
+        params=params,auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
         verify=False,timeout=20)
     txt=r.text.strip()
     if r.ok and txt.upper()=="OK":
         return True
-    # If the user already exists, some firmware returns an error here.
-    # The face API will then be attempted against the existing UserID.
-    return False
+    # It may already exist. Check whether the face/user can be updated later.
+    if "exist" in txt.lower() or "duplicate" in txt.lower():
+        return True
+    raise RuntimeError(f"Dahua user enrollment failed: HTTP {r.status_code}: {txt[:500]}")
 
 def prepare_face_photo(photo_bytes):
     img=Image.open(BytesIO(photo_bytes)).convert("RGB")
