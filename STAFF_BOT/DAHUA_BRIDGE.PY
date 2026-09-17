@@ -118,9 +118,12 @@ def ensure_dahua_user(user_id,name):
         params=params,auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
         verify=False,timeout=20)
     txt=r.text.strip()
-    if r.ok and txt.upper()=="OK":
-        return True
-    # It may already exist. Check whether the face/user can be updated later.
+    # Dahua may return HTTP 200 with a result such as "RecNo=43"
+    # instead of the literal "OK". A successful HTTP 200 means the
+    # AccessControlCard record was accepted.
+    if r.ok:
+        if "error" not in txt.lower() and "failed" not in txt.lower():
+            return True
     if "exist" in txt.lower() or "duplicate" in txt.lower():
         return True
     raise RuntimeError(f"Dahua user enrollment failed: HTTP {r.status_code}: {txt[:500]}")
