@@ -265,6 +265,29 @@ async def registration_input(update,ctx):
                 [InlineKeyboardButton("📱 Отправить фото через Telegram",callback_data="face:telegram")]
             ]))
 
+async def owner_face_cb(update,ctx):
+    q=update.callback_query; await q.answer()
+    if role(q.from_user.id)!="owner":
+        return await q.edit_message_text("🔒 Только владелец.")
+    parts=q.data.split(":")
+    if len(parts)!=3:
+        return await q.edit_message_text("❌ Неверная команда.")
+    action,dahua_id=parts[1],parts[2]
+    c=db(); e=c.execute("SELECT * FROM employees WHERE dahua_id=? AND active=1",(dahua_id,)).fetchone(); c.close()
+    if not e:
+        return await q.edit_message_text("❌ Сотрудник не найден.")
+    if action=="start":
+        ok=try_dahua_capture(dahua_id,e["name"])
+        if ok:
+            return await q.edit_message_text("📷 Команда регистрации отправлена на Dahua. Встаньте перед терминалом и дождитесь захвата лица.")
+        return await q.edit_message_text(
+            "📷 Прямой запуск камеры для этой прошивки пока не подтверждён.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                "📱 Отправить фото через Telegram",callback_data=f"ownerface:telegram:{dahua_id}")]]))
+    ctx.user_data["await_face_photo"]=True
+    ctx.user_data["owner_face_target"]=dahua_id
+    await q.edit_message_text("📱 Отправьте ОДНО фото лица сотрудника. Лицо по центру, один человек, хорошее освещение.")
+
 async def face_cb(update,ctx):
     q=update.callback_query; await q.answer()
     if role(q.from_user.id) not in ("none","employee"): return
@@ -282,6 +305,21 @@ async def face_cb(update,ctx):
 async def face_photo_handler(update,ctx):
     if not ctx.user_data.get("await_face_photo"): return
     uid=update.effective_user.id
+    owner_target=ctx.user_data.get("owner_face_target")
+    if owner_target:
+        if role(uid)!="owner": return
+        try:
+            c=db(); e=c.execute("SELECT * FROM employees WHERE dahua_id=? AND active=1",(str(owner_target),)).fetchone(); c.close()
+            if not e: raise ValueError("Сотрудник не найден.")
+            f=await update.message.photo[-1].get_file()
+            bio=BytesIO(); await f.download_to_memory(out=bio)
+            save_registration_photo(str(owner_target),e["name"],bio.getvalue())
+            ctx.user_data.clear()
+            return await update.message.reply_text(
+                f"✅ Face ID зарегистрирован в Dahua.\n\n🆔 {e['internal_id']}\n👤 {e['name']}\n📞 {e['phone'] or '—'}\n🔢 Dahua ID: {e['dahua_id']}")
+        except Exception as e:
+            log.exception("Owner face registration failed")
+            return await update.message.reply_text(f"❌ Не удалось зарегистрировать лицо в Dahua.\nТехнический ответ: {e}")
     if role(uid) not in ("none","employee"): return
     try:
         fio=ctx.user_data["fio"]; phone=ctx.user_data["phone"]
@@ -360,7 +398,14 @@ async def owner_add_input(update,ctx):
         c=db(); c.execute("INSERT OR REPLACE INTO employees(dahua_id,name,active,telegram_id,role,created_at,internal_id,phone) VALUES(?,?,?,?,?,?,?,?)",
                            (dahua_id,fio,1,None,"employee",now().isoformat(),internal_id,phone)); c.commit(); c.close()
         ctx.user_data.clear()
-        await update.message.reply_text(f"✅ Сотрудник создан.\n\n🆔 {internal_id}\n👤 {fio}\n📞 {phone}\n🔢 Dahua ID: {dahua_id}")
+        mk=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📷 Зарегистрировать Face ID",callback_data=f"ownerface:start:{dahua_id}")],
+            [InlineKeyboardButton("📱 Отправить фото через Telegram",callback_data=f"ownerface:telegram:{dahua_id}")]
+        ])
+        await update.message.reply_text(
+            f"✅ Сотрудник создан.\n\n🆔 {internal_id}\n👤 {fio}\n📞 {phone}\n🔢 Dahua ID: {dahua_id}\n\n"
+            "Теперь зарегистрируйте лицо сотрудника:",
+            reply_markup=mk)
         return True
     return False
 
@@ -628,6 +673,7 @@ def main():
     app.add_handler(CallbackQueryHandler(meal_cb,pattern=r"^meal:"))
     app.add_handler(CallbackQueryHandler(return_meal_cb,pattern=r"^mealreturn:"))
     app.add_handler(CallbackQueryHandler(serve_cb,pattern=r"^serve:"))
+    app.add_handler(CallbackQueryHandler(owner_face_cb,pattern=r"^ownerface:"))
     app.add_handler(CallbackQueryHandler(face_cb,pattern=r"^face:"))
     app.add_handler(MessageHandler(filters.PHOTO,face_photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,text_handler))
