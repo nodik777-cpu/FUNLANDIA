@@ -2,6 +2,7 @@
 import os,re,json,sqlite3,hashlib,logging,asyncio,base64
 from datetime import datetime,timedelta,timezone
 from io import BytesIO
+from PIL import Image
 import requests
 from requests.auth import HTTPDigestAuth
 from telegram import Update,ReplyKeyboardMarkup,InlineKeyboardButton,InlineKeyboardMarkup
@@ -100,15 +101,46 @@ def next_dahua_user_id():
     c.close()
     return str(max(vals+[0])+1)
 
+def ensure_dahua_user(user_id,name):
+    r=requests.get(DAHUA_URL+"/cgi-bin/Attendance.cgi",
+        params={"action":"addUser","UserID":str(user_id),"UserName":str(name)[:32]},
+        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
+        verify=False,timeout=20)
+    txt=r.text.strip()
+    if r.ok and txt.upper()=="OK":
+        return True
+    # If the user already exists, some firmware returns an error here.
+    # The face API will then be attempted against the existing UserID.
+    return False
+
+def prepare_face_photo(photo_bytes):
+    img=Image.open(BytesIO(photo_bytes)).convert("RGB")
+    img.thumbnail((500,500),Image.Resampling.LANCZOS)
+    last=b""
+    for quality in (85,75,65,55,45):
+        bio=BytesIO()
+        img.save(bio,format="JPEG",quality=quality,optimize=True)
+        last=bio.getvalue()
+        if len(last)<=90*1024:
+            return last
+    if len(last)>100*1024:
+        raise ValueError("Не удалось подготовить фото: размер JPEG больше 100 KB.")
+    return last
+
 def save_registration_photo(user_id,name,photo_bytes):
-    if len(photo_bytes)>200*1024: raise ValueError("Фото больше 200 KB.")
+    prepared=prepare_face_photo(photo_bytes)
+    ensure_dahua_user(user_id,name)
+    encoded=base64.b64encode(prepared).decode("ascii")
+    if len(encoded)>200*1024:
+        raise ValueError("Фото после Base64 больше 200 KB.")
     payload={"UserID":str(user_id),"Info":{"UserName":str(name)[:32],
-        "PhotoData":[base64.b64encode(photo_bytes).decode("ascii")]}}
+        "PhotoData":[encoded]}}
     r=requests.post(DAHUA_URL+"/cgi-bin/FaceInfoManager.cgi",
         params={"action":"add"},json=payload,
         auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
         verify=False,timeout=25)
-    r.raise_for_status()
+    if not r.ok:
+        raise RuntimeError(f"Dahua HTTP {r.status_code}: {r.text.strip()[:500]}")
     if r.text.strip().upper()!="OK":
         raise RuntimeError(f"Dahua ответил: {r.text.strip()[:300]}")
     return True
