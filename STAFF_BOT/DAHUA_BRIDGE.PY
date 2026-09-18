@@ -862,7 +862,7 @@ async def send_employee_report(message,start,end,title):
         title,
         "",
         f"👥 Сотрудников в списке: {total_employees}",
-        f"📅 Всего дней присутствия: {sum(int(r["days"] or 0) for r in rows)}",
+        f"📅 Всего дней присутствия: {sum(int(r['days'] or 0) for r in rows)}",
         "",
         "👤 ПО ФАМИЛИИ / ФИО:"
     ]
@@ -906,7 +906,7 @@ async def send_employee_month_report(message,year,month):
         lines=[
             title,
             f"👥 Сотрудников: {len(rows)}",
-            f"📅 Всего дней присутствия: {sum(int(r["days"] or 0) for r in rows)}",
+            f"📅 Всего дней присутствия: {sum(int(r['days'] or 0) for r in rows)}",
             ""
         ]
         for i,r in enumerate(rows,1):
