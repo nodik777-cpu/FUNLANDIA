@@ -1,5 +1,5 @@
 
-import os,re,json,sqlite3,hashlib,logging,asyncio,base64
+import os,re,json,sqlite3,hashlib,logging,asyncio,base64,tempfile
 from datetime import datetime,timedelta,timezone
 from io import BytesIO
 from PIL import Image
@@ -397,8 +397,7 @@ async def access_cb(update,ctx):
     if role(q.from_user.id)!="owner":return await q.edit_message_text("🔒 Только владелец.")
     _,act,tid=q.data.split(":");tid=int(tid);c=db()
     if act=="deny":
-        c.execute("UPDATE access_requests SET status='denied' WHERE telegram_id=?",(tid,));c.commit();c.close();tg_send(tid,"❌ Доступ отклонён.");return await q.edit_message_text("❌ Отклонено.")    c.execute("INSERT OR REPLACE INTO user_roles VALUES(?,?)",(tid,act));c.execute("UPDATE access_requests SET status='approved',requested_role=? WHERE telegram_id=?",(act,tid));c.commit();c.close()
-    tg_send(tid,f"✅ Доступ подтверждён.\nРоль: {act}")
+        c.execute("UPDATE access_requests SET status='denied' WHERE telegram_id=?",(tid,));c.commit();c.close();tg_send(tid,"❌ Доступ отклонён.");return await q.edit_message_text("❌ Отклонено.")    c.execute("INSERT OR REPLACE INTO user_roles VALUES(?,?)",(tid,act));c.execute("UPDATE access_requests SET status='approved',requested_role=? WHERE telegram_id=?",(act,tid));c.commit();c.close()    tg_send(tid,f"✅ Доступ подтверждён.\nРоль: {act}")
     await q.edit_message_text(f"✅ Доступ выдан: {act}")
 
 async def registration_start(update,ctx):
@@ -779,6 +778,43 @@ async def canteen_report_menu(update,ctx):
         ])
     )
 
+def create_employee_excel(start,end,title):
+    from openpyxl import Workbook
+    rows=employee_report_rows(start,end)
+    wb=Workbook(); ws=wb.active; ws.title="Сотрудники"
+    ws.append(["№","Фамилия / ФИО","Дней","Проходов"])
+    for i,r in enumerate(rows,1):
+        ws.append([i,r["name"],int(r["days"] or 0),int(r["passes"] or 0)])
+    ws.append([]); ws.append(["","ИТОГО",len(rows),sum(int(r["passes"] or 0) for r in rows)])
+    for col,width in {"A":7,"B":38,"C":12,"D":14}.items(): ws.column_dimensions[col].width=width
+    filepath=os.path.join(tempfile.gettempdir(),"EMPLOYEES_REPORT.xlsx"); wb.save(filepath); return filepath
+
+async def send_employee_excel(message,start,end):
+    filepath=create_employee_excel(start,end,"EMPLOYEES_REPORT")
+    with open(filepath,"rb") as f:
+        await message.reply_document(document=f,filename="EMPLOYEES_REPORT.xlsx",caption="📊 Excel-выгрузка отчёта сотрудников")
+    try: os.remove(filepath)
+    except OSError: pass
+
+async def send_employee_month_excel(message,year,month):
+    import calendar
+    last_day=calendar.monthrange(year,month)[1]
+    start1=f"{year:04d}-{month:02d}-01"; end1=f"{year:04d}-{month:02d}-16"
+    start2=f"{year:04d}-{month:02d}-16"
+    end2=f"{year+1:04d}-01-01" if month==12 else f"{year:04d}-{month+1:02d}-01"
+    from openpyxl import Workbook
+    wb=Workbook(); ws=wb.active; ws.title="Сотрудники"
+    ws.append(["Период","№","Фамилия / ФИО","Дней","Проходов"])
+    for period,start,end in [("1–15",start1,end1),(f"16–{last_day}",start2,end2)]:
+        for i,r in enumerate(employee_report_rows(start,end),1):
+            ws.append([period,i,r["name"],int(r["days"] or 0),int(r["passes"] or 0)])
+    for col,width in {"A":12,"B":7,"C":38,"D":12,"E":14}.items(): ws.column_dimensions[col].width=width
+    filepath=os.path.join(tempfile.gettempdir(),f"EMPLOYEES_MONTH_{month:02d}_{year}.xlsx"); wb.save(filepath)
+    with open(filepath,"rb") as f:
+        await message.reply_document(document=f,filename=os.path.basename(filepath),caption=f"📊 Excel-выгрузка сотрудников за {month:02d}.{year}")
+    try: os.remove(filepath)
+    except OSError: pass
+
 async def send_employee_report(message,start,end,title):
     c=db()
     rows=c.execute(
@@ -797,7 +833,6 @@ async def send_employee_report(message,start,end,title):
     total_employees=len(rows)
     total_days=sum(int(r["days"] or 0) for r in rows)
     total_passes=sum(int(r["passes"] or 0) for r in rows)
-
     text=[
         title,
         "",
@@ -812,7 +847,7 @@ async def send_employee_report(message,start,end,title):
             f"    📅 Дней: {r['days'] or 0}   🚪 Проходов: {r['passes'] or 0}"
         )
 
-    await message.reply_text("\n".join(text))
+    await message.reply_text("\n".join(text),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📥 Выгрузить в Excel",callback_data=f"report:employees_excel:{start}:{end}")]]))
 
 async def send_employee_month_report(message,year,month):
     import calendar
@@ -873,7 +908,7 @@ async def send_employee_month_report(message,year,month):
         f"👥 Сотрудников: {len(set([r['name'] for r in a]+[r['name'] for r in b]))}",
         f"🚪 Всего проходов: {total_passes}"
     ]
-    await message.reply_text("\n".join(text))
+    await message.reply_text("\n".join(text),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📥 Выгрузить весь месяц в Excel",callback_data=f"report:employees_excel_month:{year}:{month}")]]))
 
 async def send_canteen_report(message,start,end,title):
     c=db()
@@ -963,6 +998,12 @@ async def report_cb(update,ctx):
                 [InlineKeyboardButton("🍽 Отчёт столовой",callback_data="report:canteen")]
             ])
         )
+    if kind=="employees_excel":
+        parts=q.data.split(":",3)
+        return await send_employee_excel(q.message,parts[2],parts[3])
+    if kind=="employees_excel_month":
+        parts=q.data.split(":")
+        return await send_employee_month_excel(q.message,int(parts[2]),int(parts[3]))
     if kind=="employees_half":
         return await send_employee_report(q.message,
             f"{d.year:04d}-{d.month:02d}-01",f"{d.year:04d}-{d.month:02d}-16",
@@ -1197,8 +1238,7 @@ async def control(update,ctx):
         f"🟢 Пришли сегодня: {arrived}",
         f"🔴 Ушли сегодня: {left}",
         f"👥 Сейчас на работе: {at}",
-        f"1️⃣ Первая смена: {first_shift}",
-        f"2️⃣ Вторая смена: {second_shift}","",
+        f"1️⃣ Первая смена: {first_shift}",        f"2️⃣ Вторая смена: {second_shift}","",
         f"🥗 Сейчас на обеде: {len(lunch_rows)}",
         f"   1️⃣ Первая смена: {lunch_first}",
         f"   2️⃣ Вторая смена: {lunch_second}","",
