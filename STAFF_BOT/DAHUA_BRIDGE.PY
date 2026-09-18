@@ -279,8 +279,7 @@ def keyboard(r):
         return ReplyKeyboardMarkup([
             ["👥 Управление сотрудниками","➕ Добавить сотрудника"],
             ["👥 Сейчас на работе","🍽 Столовая"],
-            ["📊 Отчёты","📱 QR столовой"],
-            ["👨‍🍳 Доступ столовой","👨‍💼 Доступ контроля"]
+            ["📊 Отчёты","📱 QR столовой"]
         ],resize_keyboard=True)
     if r=="control":
         return ReplyKeyboardMarkup([
@@ -631,7 +630,7 @@ def notify_canteen(name,kind,extra):
     for r in rows:tg_send(r["telegram_id"],f"🍽 НОВАЯ ЗАЯВКА\n{name}\n{kind}{' — ДОП.' if extra else ''}")
 
 async def canteen(update,ctx):
-    if role(update.effective_user.id)!="canteen":return
+    if role(update.effective_user.id) not in ("owner","canteen"):return
     date=now().date().isoformat();c=db();rows=c.execute("SELECT * FROM meals WHERE meal_date=? ORDER BY status='served',requested_at",(date,)).fetchall();c.close()
     if not rows:return await update.message.reply_text("Сегодня заявок на питание нет.")
     for r in rows:
