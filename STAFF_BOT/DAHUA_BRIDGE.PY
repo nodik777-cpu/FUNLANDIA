@@ -666,6 +666,24 @@ async def meal_cb(update,ctx):
         "Ожидайте выдачу в столовой.")
     notify_canteen(e["name"],kind,extra)
 
+async def extra_meal_request(update,ctx):
+    tg=update.effective_user.id
+    c=db();e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(tg,)).fetchone();c.close()
+    if not e:return await update.message.reply_text("🔒 Вы не зарегистрированы как сотрудник.")
+    mins=now().hour*60+now().minute
+    if not (LUNCH_START<=mins<=LUNCH_END or DINNER_START<=mins<=DINNER_END):
+        return await update.message.reply_text("⏰ Сейчас столовая вне времени питания.")
+    date=now().date().isoformat()
+    c=db()
+    c.execute("INSERT INTO meals(dahua_id,name,meal_type,meal_date,requested_at,extra) VALUES(?,?,?,?,?,1)",
+              (e["dahua_id"],e["name"],"Дополнительное",date,now().isoformat()))
+    c.commit();c.close()
+    await update.message.reply_text(
+        "✅ Дополнительный талон оформлен.\n\n"
+        "➕ Дополнительное питание — за счёт сотрудника.\n"
+        "Талон отправлен в столовую. Ожидайте выдачу.")
+    notify_canteen(e["name"],"Дополнительное",1)
+
 def notify_canteen(name,kind,extra):
     c=db();rows=c.execute("SELECT telegram_id FROM user_roles WHERE role='canteen'").fetchall();c.close()
     label="➕ Дополнительное питание — за счёт сотрудника" if extra else kind
@@ -802,7 +820,7 @@ async def text_handler(update,ctx):
     if t=="📊 Отчёты": return await report_menu(update,ctx)
     if t=="🍽 Столовая": return await canteen(update,ctx)
     if t=="🍽 Питание": return await meal_menu(update,ctx)
-    if t=="➕ За счёт сотрудника": return await meal_menu(update,ctx)
+    if t=="➕ За счёт сотрудника": return await extra_meal_request(update,ctx)
     if t in ("🍽 Сегодня питание","📊 Сегодня питание"): return await reports(update,ctx)
     if t in ("📱 QR столовой","📱 Проверить QR"): return await qr(update,ctx)
     if t=="👤 Мои записи":
