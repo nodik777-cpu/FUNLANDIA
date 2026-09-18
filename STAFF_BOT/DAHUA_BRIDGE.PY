@@ -241,43 +241,65 @@ def dahua_user(uid):
     return None
 
 def get_records(start,end):
-    """Read Dahua attendance records with pagination.
-    The device keeps the source records; SQLite deduplicates by RecNo.
+    """Read Dahua attendance records with offset pagination.
+
+    IMPORTANT: on ASI6213S-PW, found=500 means the number of
+    records returned for the current page, not the total number
+    of records matching the query. Therefore we must continue
+    while a full page is returned.
     """
     all_rows={}
     offset=0
     page_size=500
     max_pages=100
-    for _ in range(max_pages):
+
+    for page_no in range(max_pages):
         p={"action":"find","name":"AccessControlCardRec",
            "StartTime":str(int(start.timestamp())),
            "EndTime":str(int(end.timestamp())),
            "count":str(page_size),"offset":str(offset)}
         r=dahua_get("/cgi-bin/recordFinder.cgi",p)
+
         rows={}
         found=None
         for line in r.text.replace("\r","").splitlines():
             if line.startswith("found="):
-                try: found=int(line.split("=",1)[1].strip())
-                except Exception: pass
+                try:
+                    found=int(line.split("=",1)[1].strip())
+                except Exception:
+                    found=None
             m=re.match(r"records\[(\d+)\]\.([^=]+)=(.*)$",line)
-            if m: rows.setdefault(m.group(1),{})[m.group(2)]=m.group(3)
+            if m:
+                rows.setdefault(m.group(1),{})[m.group(2)]=m.group(3)
+
         if not rows:
             break
+
         before=len(all_rows)
         for row in rows.values():
             key=str(row.get("RecNo","")).strip()
             if not key:
-                key=hashlib.sha1(json.dumps(row,sort_keys=True).encode()).hexdigest()
+                key=hashlib.sha1(
+                    json.dumps(row,sort_keys=True).encode()
+                ).hexdigest()
             all_rows[key]=row
         added=len(all_rows)-before
-        if found is not None and len(all_rows)>=found:
-            break
-        if len(rows)<page_size or added==0:
-            break
-        offset += page_size
-    return list(all_rows.values())
 
+        log.info("Dahua records page=%s offset=%s returned=%s found=%s total_unique=%s",
+                 page_no+1,offset,len(rows),found,len(all_rows))
+
+        # On this firmware found is the page size, not a global total.
+        if len(rows)<page_size:
+            break
+
+        # Protect against a device that ignores offset and repeats a page.
+        if added==0:
+            log.warning("Dahua pagination stopped: offset=%s returned no new RecNo values",offset)
+            break
+
+        offset += page_size
+
+    return list(all_rows.values())
 def import_records(records):
     c=db(); new=[]
     for x in records:
