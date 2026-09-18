@@ -689,10 +689,6 @@ def notify_canteen(name,kind,extra):
     label="➕ Дополнительное питание — за счёт сотрудника" if extra else kind
     for r in rows:tg_send(r["telegram_id"],f"🍽 НОВЫЙ ТАЛОН\n👤 {name}\n{label}")
 
-def notify_canteen(name,kind,extra):
-    c=db();rows=c.execute("SELECT telegram_id FROM user_roles WHERE role='canteen'").fetchall();c.close()
-    for r in rows:tg_send(r["telegram_id"],f"🍽 НОВАЯ ЗАЯВКА\n{name}\n{kind}{' — ДОП.' if extra else ''}")
-
 async def canteen(update,ctx):
     if role(update.effective_user.id) not in ("owner","canteen"):return
     date=now().date().isoformat();c=db();rows=c.execute("SELECT * FROM meals WHERE meal_date=? ORDER BY status='served',requested_at",(date,)).fetchall();c.close()
