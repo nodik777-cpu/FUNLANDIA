@@ -121,32 +121,22 @@ def next_dahua_user_id():
     return str(max(vals+[0])+1)
 
 def ensure_dahua_user(user_id,name):
-    # ASI6XXX access-control devices use recordUpdater.cgi to enroll an access user.
-    # CardNo is required by Dahua's CGI integration even when the user will use face only.
-    uid=str(user_id)
-    params={
-        "action":"insert",
-        "name":"AccessControlCard",
-        "CardName":str(name)[:32],
-        "CardNo":uid,
-        "UserID":uid,
-        "CardStatus":"0",
-        "CardType":"0"
-    }
-    r=requests.get(DAHUA_URL+"/cgi-bin/recordUpdater.cgi",
-        params=params,auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
+    # ASI6XXX: keep the original user-enrollment method that was used
+    # before the AccessControlCard experiment. Existing users may already
+    # have a Face ID, so a failed addUser is not fatal; FaceInfoManager
+    # will work against the existing UserID.
+    r=requests.get(DAHUA_URL+"/cgi-bin/Attendance.cgi",
+        params={"action":"addUser","UserID":str(user_id),"UserName":str(name)[:32]},
+        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
         verify=False,timeout=20)
     txt=r.text.strip()
-    # Dahua may return HTTP 200 with a result such as "RecNo=43"
-    # instead of the literal "OK". A successful HTTP 200 means the
-    # AccessControlCard record was accepted.
-    if r.ok:
-        if "error" not in txt.lower() and "failed" not in txt.lower():
-            return True
+    if r.ok and txt.upper()=="OK":
+        return True
+    # Existing Dahua users can legitimately reject addUser as duplicate.
+    # Do not create/modify an AccessControlCard record here.
     if "exist" in txt.lower() or "duplicate" in txt.lower():
         return True
-    raise RuntimeError(f"Dahua user enrollment failed: HTTP {r.status_code}: {txt[:500]}")
-
+    return False
 def delete_dahua_user(user_id):
     uid=str(user_id)
     # 1) Remove the face template.
