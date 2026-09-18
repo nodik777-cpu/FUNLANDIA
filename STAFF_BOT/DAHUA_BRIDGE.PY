@@ -407,7 +407,8 @@ async def access_cb(update,ctx):
     tg_send(tid,f"✅ Доступ подтверждён.\nРоль: {act}")
     await q.edit_message_text(f"✅ Доступ выдан: {act}")
 
-async def registration_start(update,ctx):    if role(update.effective_user.id) not in ("none","employee"): return
+async def registration_start(update,ctx):
+    if role(update.effective_user.id) not in ("none","employee"): return
     ctx.user_data.clear(); ctx.user_data["reg_fio"]=True
     await update.message.reply_text(
         "📝 Регистрация сотрудника\n\nШаг 1 из 3\nВведите ФИО сотрудника:",
@@ -804,9 +805,12 @@ def employee_report_rows(start,end):
 
 def create_employee_excel(start,end,title):
     from openpyxl import Workbook
-    rows=employee_report_rows(start,end)    wb=Workbook(); ws=wb.active; ws.title="Сотрудники"
-    ws.append(["№","Фамилия / ФИО","Дней","Проходов"])    for i,r in enumerate(rows,1):
-        ws.append([i,r["name"],int(r["days"] or 0),int(r["passes"] or 0)])    ws.append([]); ws.append(["","ИТОГО",len(rows),sum(int(r["passes"] or 0) for r in rows)])
+    rows=employee_report_rows(start,end)
+    wb=Workbook(); ws=wb.active; ws.title="Сотрудники"
+    ws.append(["№","Фамилия / ФИО","Дней","Проходов"])
+    for i,r in enumerate(rows,1):
+        ws.append([i,r["name"],int(r["days"] or 0),int(r["passes"] or 0)])
+    ws.append([]); ws.append(["","ИТОГО",len(rows),sum(int(r["passes"] or 0) for r in rows)])
     for col,width in {"A":7,"B":38,"C":12,"D":14}.items(): ws.column_dimensions[col].width=width
     filepath=os.path.join(tempfile.gettempdir(),"EMPLOYEES_REPORT.xlsx"); wb.save(filepath); return filepath
 
@@ -818,7 +822,8 @@ async def send_employee_excel(message,start,end):
     except OSError: pass
 
 async def send_employee_month_excel(message,year,month):
-    import calendar    last_day=calendar.monthrange(year,month)[1]
+    import calendar
+    last_day=calendar.monthrange(year,month)[1]
     start1=f"{year:04d}-{month:02d}-01"; end1=f"{year:04d}-{month:02d}-16"
     start2=f"{year:04d}-{month:02d}-16"
     end2=f"{year+1:04d}-01-01" if month==12 else f"{year:04d}-{month+1:02d}-01"
@@ -1201,11 +1206,13 @@ def predicted_days_off(date=None,weeks=8):
             day=d-timedelta(weeks=w)
             rows=last_events(e["dahua_id"],day.isoformat())
             observed+=1
-            if not rows: absent+=1        if observed>=4 and absent/observed>=0.70:
+            if not rows: absent+=1
+        if observed>=4 and absent/observed>=0.70:
             result.append((e["name"],absent,observed))
     return result
 async def control(update,ctx):
-    if role(update.effective_user.id) not in ("owner","control"): return    date=now().date().isoformat()
+    if role(update.effective_user.id) not in ("owner","control"): return
+    date=now().date().isoformat()
     c=db(); emps=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall(); c.close()
 
     at=late=early=first_shift=second_shift=arrived=left=0
