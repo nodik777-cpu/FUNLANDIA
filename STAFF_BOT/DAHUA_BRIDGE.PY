@@ -937,7 +937,13 @@ async def report_cb(update,ctx):
     if kind=="canteen":
         return await canteen_report_menu(update,ctx)
     if kind=="back":
-        return await report_menu(q.message,ctx)
+        return await q.edit_message_text(
+            "📊 Отчёты:",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👥 Отчёт сотрудников",callback_data="report:employees")],
+                [InlineKeyboardButton("🍽 Отчёт столовой",callback_data="report:canteen")]
+            ])
+        )
     if kind=="employees_half":
         return await send_employee_report(q.message,
             f"{d.year:04d}-{d.month:02d}-01",f"{d.year:04d}-{d.month:02d}-16",
