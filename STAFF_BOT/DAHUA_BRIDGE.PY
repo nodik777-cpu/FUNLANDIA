@@ -121,10 +121,9 @@ def next_dahua_user_id():
     return str(max(vals+[0])+1)
 
 def ensure_dahua_user(user_id,name):
-    # ASI6XXX: keep the original user-enrollment method that was used
-    # before the AccessControlCard experiment. Existing users may already
-    # have a Face ID, so a failed addUser is not fatal; FaceInfoManager
-    # will work against the existing UserID.
+    # ASI6XXX: используем исходный способ регистрации пользователя.
+    # AccessControlCard здесь НЕ создаём и НЕ изменяем.
+    # Для существующего UserID повторный addUser может вернуть duplicate/exist.
     r=requests.get(DAHUA_URL+"/cgi-bin/Attendance.cgi",
         params={"action":"addUser","UserID":str(user_id),"UserName":str(name)[:32]},
         auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
@@ -132,40 +131,11 @@ def ensure_dahua_user(user_id,name):
     txt=r.text.strip()
     if r.ok and txt.upper()=="OK":
         return True
-    # Existing Dahua users can legitimately reject addUser as duplicate.
-    # Do not create/modify an AccessControlCard record here.
     if "exist" in txt.lower() or "duplicate" in txt.lower():
         return True
-    return False
-def delete_dahua_user(user_id):
-    uid=str(user_id)
-    # 1) Remove the face template.
-    face=requests.get(DAHUA_URL+"/cgi-bin/FaceInfoManager.cgi",
-        params={"action":"remove","UserID":uid},
-        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),verify=False,timeout=20)
-    face_txt=face.text.strip()
-    if not face.ok or ("error" in face_txt.lower() or "failed" in face_txt.lower()):
-        raise RuntimeError(f"Не удалось удалить Face ID: HTTP {face.status_code}: {face_txt[:300]}")
-
-    # 2) Remove the AccessControlCard record(s) belonging to this UserID.
-    r=requests.get(DAHUA_URL+"/cgi-bin/recordFinder.cgi",
-        params={"action":"find","name":"AccessControlCard","UserID":uid,"count":"100"},
-        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),verify=False,timeout=20)
-    r.raise_for_status()
-    rows={}
-    for line in r.text.replace("\r","").splitlines():
-        m=re.match(r"records\[(\d+)\]\.([^=]+)=(.*)$",line)
-        if m: rows.setdefault(m.group(1),{})[m.group(2)]=m.group(3)
-    for row in rows.values():
-        recno=str(row.get("RecNo","")).strip()
-        if not recno: continue
-        rem=requests.get(DAHUA_URL+"/cgi-bin/recordUpdater.cgi",
-            params={"action":"remove","name":"AccessControlCard","recno":recno},
-            auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),verify=False,timeout=20)
-        txt=rem.text.strip()
-        if not rem.ok or ("error" in txt.lower() or "failed" in txt.lower()):
-            raise RuntimeError(f"Не удалось удалить запись Dahua recno={recno}: HTTP {rem.status_code}: {txt[:300]}")
-    return True
+    # Не продолжаем молча: FaceInfoManager должен работать только после
+    # успешного создания нового Dahua UserID.
+    raise RuntimeError(f"Dahua user enrollment failed: HTTP {r.status_code}: {txt[:500]}")
 
 def prepare_face_photo(photo_bytes):
     img=Image.open(BytesIO(photo_bytes)).convert("RGB")
