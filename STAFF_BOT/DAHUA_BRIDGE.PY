@@ -251,7 +251,7 @@ def get_records(start,end):
     all_rows={}
     offset=0
     page_size=500
-    max_pages=100
+    max_pages=1000
 
     for page_no in range(max_pages):
         p={"action":"find","name":"AccessControlCardRec",
@@ -1399,23 +1399,15 @@ async def sync_command(update,ctx):
         await update.message.reply_text(f"❌ Ошибка синхронизации: {e}")
 
 async def poller(app):
-    # 1) На старте восстанавливаемся от последнего успешного курсора.
-    # Если курсора нет, загружаем весь текущий месяц.
+    # 1) При каждом запуске сначала полностью сверяем текущий месяц.
+    # Это гарантирует, что после перезапуска/сбоя в локальной БД
+    # не останется пропущенный старый день текущего месяца.
     try:
-        cursor=sync_cursor()
-        end=now()
-        if cursor:
-            start=cursor-timedelta(minutes=15)
-            total,new=sync_window(start,end)
-            set_sync_cursor(end)
-            log.info("Recovery sync: period=%s..%s received=%s new=%s",
-                     start.isoformat(),end.isoformat(),total,new)
-        else:
-            total,new,start,end=sync_month()
-            log.info("Initial month sync: period=%s..%s received=%s new=%s",
-                     start.isoformat(),end.isoformat(),total,new)
+        total,new,start,end=sync_month()
+        log.info("Initial full-month reconciliation: period=%s..%s received=%s new=%s",
+                 start.isoformat(),end.isoformat(),total,new)
     except Exception as e:
-        log.exception("Initial/recovery sync failed: %s",e)
+        log.exception("Initial full-month reconciliation failed: %s",e)
 
     last_full_sync=now()
     while True:
