@@ -276,18 +276,31 @@ def role(uid):
 
 def keyboard(r):
     if r=="owner":
-        return ReplyKeyboardMarkup([["👥 Управление сотрудниками","➕ Добавить сотрудника"],
-                                     ["📊 Контроль","🍽 Питание"],
-                                     ["📊 Отчёты","📱 QR столовой"]],resize_keyboard=True)
+        return ReplyKeyboardMarkup([
+            ["👥 Управление сотрудниками","➕ Добавить сотрудника"],
+            ["👥 Сейчас на работе","🍽 Столовая"],
+            ["📊 Отчёты","📱 QR столовой"],
+            ["👨‍🍳 Доступ столовой","👨‍💼 Доступ контроля"]
+        ],resize_keyboard=True)
     if r=="control":
-        return ReplyKeyboardMarkup([["👥 Сейчас на работе"],["🔴 Опоздали","⚠️ Ранее ушли"],
-                                     ["🍽 Сейчас на обеде"],["➕ Добавить сотрудника"]],resize_keyboard=True)
+        return ReplyKeyboardMarkup([
+            ["👥 Сейчас на работе"],
+            ["🔴 Опоздали","⚠️ Ранее ушли"],
+            ["🍽 Сейчас на обеде"],
+            ["➕ Добавить сотрудника"]
+        ],resize_keyboard=True)
     if r=="canteen":
-        return ReplyKeyboardMarkup([["🍽 Сегодня питание","📅 Неделя"],
-                                     ["🗓 Месяц","📅 1–15"],["📅 16–конец месяца","📱 Проверить QR"]],resize_keyboard=True)
+        return ReplyKeyboardMarkup([
+            ["🍽 Сегодня питание","📅 Неделя"],
+            ["🗓 Месяц","📅 1–15"],
+            ["📅 16–конец месяца","📱 Проверить QR"]
+        ],resize_keyboard=True)
     if r=="employee":
-        return ReplyKeyboardMarkup([["👤 Мои записи","📋 Мой отчёт"],
-                                     ["🍽 Питание","📱 QR столовой"],["ℹ️ Помощь"]],resize_keyboard=True)
+        return ReplyKeyboardMarkup([
+            ["👤 Мои записи","📋 Мой отчёт"],
+            ["🍽 Питание","📱 QR столовой"],
+            ["ℹ️ Помощь"]
+        ],resize_keyboard=True)
     return ReplyKeyboardMarkup([["📝 Регистрация"],["🔐 Запросить доступ"]],resize_keyboard=True)
 
 async def start(update,ctx):
@@ -529,25 +542,46 @@ async def owner_add_input(update,ctx):
 
 async def report_menu(update,ctx):
     if role(update.effective_user.id)!="owner": return
-    await update.message.reply_text("📊 Отчёты за питание:",reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("1–15 число",callback_data="report:1"),InlineKeyboardButton("16–конец месяца",callback_data="report:2")]
+    await update.message.reply_text("📊 Отчёты:",reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("📅 1–15",callback_data="report:half")],
+        [InlineKeyboardButton("📅 1–конец месяца",callback_data="report:full")],
+        [InlineKeyboardButton("🗓 Месячный отчёт",callback_data="report:month")]
     ]))
 
 async def report_cb(update,ctx):
     q=update.callback_query;await q.answer()
     if role(q.from_user.id)!="owner":return
-    part=int(q.data.split(":")[1]);d=now();start_day=1 if part==1 else 16
-    end_day=15 if part==1 else 31
-    start=f"{d.year:04d}-{d.month:02d}-{start_day:02d}"
-    if part==1:end=f"{d.year:04d}-{d.month:02d}-15"
+    kind=q.data.split(":")[1]
+    d=now()
+    import calendar
+    last_day=calendar.monthrange(d.year,d.month)[1]
+    if kind=="half":
+        start_day,end_day=1,15
+        title="📅 ОТЧЁТ 1–15"
+    elif kind=="full":
+        start_day,end_day=1,last_day
+        title="📅 ОТЧЁТ 1–КОНЕЦ МЕСЯЦА"
+    elif kind=="month":
+        start_day,end_day=1,last_day
+        title="🗓 МЕСЯЧНЫЙ ОТЧЁТ"
     else:
-        import calendar
-        end=f"{d.year:04d}-{d.month:02d}-{calendar.monthrange(d.year,d.month)[1]:02d}"
-    c=db();rows=c.execute("SELECT meal_type,COUNT(*) n,SUM(extra) extra FROM meals WHERE meal_date BETWEEN ? AND ? GROUP BY meal_type",(start,end)).fetchall()
+        return await q.edit_message_text("❌ Неизвестный период.")
+    start=f"{d.year:04d}-{d.month:02d}-{start_day:02d}"
+    end=f"{d.year:04d}-{d.month:02d}-{end_day:02d}"
+    c=db()
+    meals=c.execute("SELECT meal_type,COUNT(*) n,SUM(extra) extra FROM meals WHERE meal_date BETWEEN ? AND ? GROUP BY meal_type",(start,end)).fetchall()
     total=c.execute("SELECT COUNT(*) n,SUM(extra) extra FROM meals WHERE meal_date BETWEEN ? AND ?",(start,end)).fetchone()
     c.close()
-    text=[f"📊 ПИТАНИЕ: {start_day}–{end.split('-')[-1]}.{d.month:02d}.{d.year}",f"Всего: {total['n'] or 0}",f"Дополнительных: {total['extra'] or 0}",f"Сумма удержания: {(total['extra'] or 0)*EXTRA_MEAL_COST:,} сум"]
-    for r in rows:text.append(f"{r['meal_type']}: {r['n']} (доп.: {r['extra'] or 0})")
+    text=[
+        title,
+        f"Период: {start_day:02d}.{d.month:02d}.{d.year}–{end_day:02d}.{d.month:02d}.{d.year}",
+        "",
+        f"🍽 Всего питания: {total['n'] or 0}",
+        f"⚠️ Дополнительных: {total['extra'] or 0}",
+        f"💰 Сумма удержания: {(total['extra'] or 0)*EXTRA_MEAL_COST:,} сум"
+    ]
+    for r in meals:
+        text.append(f"{r['meal_type']}: {r['n']} (доп.: {r['extra'] or 0})")
     await q.edit_message_text("\n".join(text))
 
 def meal_entitlement(uid,kind):
@@ -646,13 +680,20 @@ async def control(update,ctx):
     date=now().date().isoformat()
     c=db();emps=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall();c.close()
     at=late=early=0
+    first_shift=second_shift=0
     at_lines=[];meal_lines=[]
     for e in emps:
         rows=last_events(e["dahua_id"],date)
         if not rows:
             continue
         if rows[-1]["event_type"]=="Entry":
-            at+=1; at_lines.append(f"🟢 {e['name']}")
+            at+=1
+            sh=shift_for(e["dahua_id"],date)
+            if sh in ("1-я","Нестандартная"):
+                first_shift+=1
+            elif sh=="2-я":
+                second_shift+=1
+            at_lines.append(f"🟢 {e['name']} — {sh}")
         ins=[r for r in rows if r["event_type"]=="Entry"];outs=[r for r in rows if r["event_type"]=="Exit"]
         sh=shift_for(e["dahua_id"],date)
         if ins:
@@ -666,14 +707,25 @@ async def control(update,ctx):
     c=db()
     l=c.execute("SELECT COUNT(*) n FROM meals WHERE meal_date=? AND meal_type='Обед' AND status IN ('requested','served')",(date,)).fetchone()["n"]
     d=c.execute("SELECT COUNT(*) n FROM meals WHERE meal_date=? AND meal_type='Ужин' AND status IN ('requested','served')",(date,)).fetchone()["n"]
-    onmeal_rows=c.execute("SELECT name,meal_type FROM meals WHERE meal_date=? AND status='served' ORDER BY served_at",(date,)).fetchall()
+    onmeal_rows=c.execute("SELECT name,meal_type FROM meals WHERE meal_date=? AND status='served' AND returned_at IS NULL ORDER BY served_at",(date,)).fetchall()
     c.close()
     meal_lines=[f"🍴 {r['name']} — {r['meal_type']}" for r in onmeal_rows]
-    text=[f"📊 КОНТРОЛЬ — {now():%d.%m.%Y}","",f"👥 Сейчас на работе: {at}",f"⏰ Опоздали: {late}",f"⚠️ Ранний уход: {early}","",f"🥗 Обед: {l}",f"🍽 Ужин: {d}",f"🍴 Сейчас на питании: {len(meal_lines)}"]
+    text=[
+        f"📊 КОНТРОЛЬ — {now():%d.%m.%Y}",
+        "",
+        f"👥 Сейчас на работе: {at}",
+        f"1️⃣ Первая смена: {first_shift}",
+        f"2️⃣ Вторая смена: {second_shift}",
+        f"🍽 Сейчас на обеде: {len(meal_lines)}",
+        f"🥗 Обед оформлен: {l}",
+        f"🍽 Ужин оформлен: {d}",
+        f"⏰ Опоздали: {late}",
+        f"⚠️ Ранний уход: {early}"
+    ]
     if at_lines:
         text += ["","👥 НА РАБОТЕ:"] + at_lines
     if meal_lines:
-        text += ["","🍴 СЕЙЧАС НА ПИТАНИИ:"] + meal_lines
+        text += ["","🍴 СЕЙЧАС НА ОБЕДЕ:"] + meal_lines
     await update.message.reply_text("\n".join(text))
 
 async def qr(update,ctx):
@@ -692,11 +744,12 @@ async def text_handler(update,ctx):
     if t in ("📝 Регистрация","📝 Регистрация для питания"): return await registration_start(update,ctx)
     if t in ("👥 Управление сотрудниками","👥 Сотрудники"): return await employees(update,ctx)
     if t=="➕ Добавить сотрудника": return await owner_add_start(update,ctx)
-    if t in ("📊 Контроль","👥 Сейчас на работе","🔴 Опоздали","⚠️ Ранее ушли","🍽 Сейчас на обеде"):
+    if t in ("👥 Сейчас на работе","📊 Контроль","🔴 Опоздали","⚠️ Ранее ушли","🍽 Сейчас на обеде"):
         return await control(update,ctx)
+    if t=="📊 Отчёты": return await report_menu(update,ctx)
+    if t=="🍽 Столовая": return await canteen(update,ctx)
     if t=="🍽 Питание": return await meal_menu(update,ctx)
     if t in ("🍽 Сегодня питание","📊 Сегодня питание"): return await reports(update,ctx)
-    if t=="📊 Отчёты": return await report_menu(update,ctx)
     if t in ("📱 QR столовой","📱 Проверить QR"): return await qr(update,ctx)
     if t=="👤 Мои записи":
         c=db(); e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(update.effective_user.id,)).fetchone(); c.close()
