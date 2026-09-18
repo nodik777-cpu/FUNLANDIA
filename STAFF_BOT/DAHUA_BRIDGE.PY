@@ -786,42 +786,44 @@ async def canteen_report_menu(update,ctx):
     )
 
 def employee_report_rows(start,end):
+    # Только текущие активные сотрудники. Старые/тестовые записи Dahua
+    # не должны попадать в официальный отчёт.
     c=db()
     rows=c.execute(
-        "SELECT user_id,name,days FROM ("
-        "SELECT a.user_id,MAX(a.name) name,"
-        "COUNT(DISTINCT substr(a.event_time,1,10)) days "
-        "FROM attendance a WHERE a.event_time>=? AND a.event_time<? "
-        "AND a.event_type='Entry' "
-        "AND a.user_id IS NOT NULL AND a.user_id!='' GROUP BY a.user_id "
-        "UNION ALL "
-        "SELECT e.dahua_id,e.name,0 FROM employees e "
-        "WHERE e.active=1 AND NOT EXISTS (SELECT 1 FROM attendance a "
-        "WHERE a.user_id=e.dahua_id AND a.event_time>=? AND a.event_time<? "
-        "AND a.event_type='Entry')"
-        ") ORDER BY UPPER(name)",
-        (start,end,start,end)
+        "SELECT e.dahua_id user_id,e.name name,"
+        "COUNT(DISTINCT CASE WHEN a.event_type='Entry' THEN substr(a.event_time,1,10) END) days "
+        "FROM employees e "
+        "LEFT JOIN attendance a ON a.user_id=e.dahua_id "
+        "AND a.event_time>=? AND a.event_time<? "
+        "WHERE e.active=1 "
+        "GROUP BY e.dahua_id,e.name "
+        "ORDER BY UPPER(e.name)",
+        (start,end)
     ).fetchall()
     c.close()
     return rows
 
-def create_employee_excel(start,end,title):
+def build_employee_excel(start,end):
     from openpyxl import Workbook
     rows=employee_report_rows(start,end)
     wb=Workbook(); ws=wb.active; ws.title="Сотрудники"
     ws.append(["№","Фамилия / ФИО","Дней"])
     for i,r in enumerate(rows,1):
         ws.append([i,r["name"],int(r["days"] or 0)])
-    ws.append([]); ws.append(["","ИТОГО",sum(int(r["days"] or 0) for r in rows)])
-    for col,width in {"A":7,"B":38,"C":12}.items(): ws.column_dimensions[col].width=width
-    filepath=os.path.join(tempfile.gettempdir(),"EMPLOYEES_REPORT.xlsx"); wb.save(filepath); return filepath
+    ws.append([])
+    ws.append(["","ИТОГО",sum(int(r["days"] or 0) for r in rows)])
+    for col,width in {"A":7,"B":38,"C":12}.items():
+        ws.column_dimensions[col].width=width
+    bio=BytesIO(); bio.name="EMPLOYEES_REPORT.xlsx"; wb.save(bio); bio.seek(0)
+    return bio
 
 async def send_employee_excel(message,start,end):
-    filepath=create_employee_excel(start,end,"EMPLOYEES_REPORT")
-    with open(filepath,"rb") as f:
-        await message.reply_document(document=f,filename="EMPLOYEES_REPORT.xlsx",caption="📊 Excel-выгрузка отчёта сотрудников")
-    try: os.remove(filepath)
-    except OSError: pass
+    bio=build_employee_excel(start,end)
+    await message.reply_document(
+        document=bio,
+        filename="EMPLOYEES_REPORT.xlsx",
+        caption="📊 Excel-выгрузка отчёта сотрудников"
+    )
 
 async def send_employee_month_excel(message,year,month):
     import calendar
@@ -835,12 +837,15 @@ async def send_employee_month_excel(message,year,month):
     for period,start,end in [("1–15",start1,end1),(f"16–{last_day}",start2,end2)]:
         for i,r in enumerate(employee_report_rows(start,end),1):
             ws.append([period,i,r["name"],int(r["days"] or 0)])
-    for col,width in {"A":12,"B":7,"C":38,"D":12}.items(): ws.column_dimensions[col].width=width
-    filepath=os.path.join(tempfile.gettempdir(),f"EMPLOYEES_MONTH_{month:02d}_{year}.xlsx"); wb.save(filepath)
-    with open(filepath,"rb") as f:
-        await message.reply_document(document=f,filename=os.path.basename(filepath),caption=f"📊 Excel-выгрузка сотрудников за {month:02d}.{year}")
-    try: os.remove(filepath)
-    except OSError: pass
+    for col,width in {"A":12,"B":7,"C":38,"D":12}.items():
+        ws.column_dimensions[col].width=width
+    bio=BytesIO(); bio.name=f"EMPLOYEES_MONTH_{month:02d}_{year}.xlsx"
+    wb.save(bio); bio.seek(0)
+    await message.reply_document(
+        document=bio,
+        filename=bio.name,
+        caption=f"📊 Excel-выгрузка сотрудников за {month:02d}.{year}"
+    )
 
 async def send_employee_report(message,start,end,title):
     c=db()
@@ -933,6 +938,50 @@ async def send_employee_month_report(message,year,month):
     ]
     await message.reply_text("\n".join(text),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📥 Выгрузить весь месяц в Excel",callback_data=f"report:employees_excel_month:{year}:{month}")]]))
 
+def build_canteen_excel(start,end):
+    from openpyxl import Workbook
+    c=db()
+    rows=c.execute(
+        "SELECT meal_date,name,meal_type,extra,status,requested_at,served_at "
+        "FROM meals WHERE meal_date BETWEEN ? AND ? "
+        "ORDER BY meal_date,name,requested_at",
+        (start,end)
+    ).fetchall()
+    c.close()
+    wb=Workbook(); ws=wb.active; ws.title="Столовая"
+    ws.append(["Дата","Фамилия / ФИО","Питание","Доп.","Статус","Заявка","Выдано"])
+    for r in rows:
+        ws.append([
+            r["meal_date"],r["name"],r["meal_type"],
+            "Да" if r["extra"] else "Нет",r["status"],
+            r["requested_at"] or "",r["served_at"] or ""
+        ])
+    for col,width in {"A":14,"B":38,"C":18,"D":10,"E":14,"F":24,"G":24}.items():
+        ws.column_dimensions[col].width=width
+    bio=BytesIO(); bio.name="CANTEEN_REPORT.xlsx"; wb.save(bio); bio.seek(0)
+    return bio
+
+async def send_canteen_excel(message,start,end):
+    bio=build_canteen_excel(start,end)
+    await message.reply_document(
+        document=bio,
+        filename="CANTEEN_REPORT.xlsx",
+        caption="🍽 Excel-выгрузка отчёта столовой"
+    )
+
+async def send_canteen_month_excel(message,year,month):
+    import calendar
+    last_day=calendar.monthrange(year,month)[1]
+    start=f"{year:04d}-{month:02d}-01"
+    end=f"{year+1:04d}-01-01" if month==12 else f"{year:04d}-{month+1:02d}-01"
+    bio=build_canteen_excel(start,end)
+    bio.name=f"CANTEEN_MONTH_{month:02d}_{year}.xlsx"
+    await message.reply_document(
+        document=bio,
+        filename=bio.name,
+        caption=f"🍽 Excel-выгрузка столовой за {month:02d}.{year}"
+    )
+
 async def send_canteen_report(message,start,end,title):
     c=db()
     rows=c.execute(
@@ -956,7 +1005,13 @@ async def send_canteen_report(message,start,end,title):
     for row in rows:
         icon="🥗" if row["meal_type"]=="Обед" else "🌙" if row["meal_type"]=="Ужин" else "➕"
         text.append(f"{icon} {row['meal_type']}: {row['n']}")
-    await message.reply_text("\n".join(text))
+    await message.reply_text(
+        "\n".join(text),
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("📥 Выгрузить в Excel",
+                                 callback_data=f"report:canteen_excel:{start}:{end}")
+        ]])
+    )
 
 async def send_canteen_month_report(message,year,month):
     import calendar
@@ -999,7 +1054,13 @@ async def send_canteen_month_report(message,year,month):
         f"⏳ Ожидают: {pending}",
         f"➕ Дополнительных: {extra}"
     ]
-    await message.reply_text("\n".join(text))
+    await message.reply_text(
+        "\n".join(text),
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("📥 Выгрузить весь месяц в Excel",
+                                 callback_data=f"report:canteen_excel_month:{year}:{month}")
+        ]])
+    )
 
 async def report_cb(update,ctx):
     q=update.callback_query; await q.answer()
@@ -1027,6 +1088,38 @@ async def report_cb(update,ctx):
     if kind=="employees_excel_month":
         parts=q.data.split(":")
         return await send_employee_month_excel(q.message,int(parts[2]),int(parts[3]))
+    if kind=="employees_excel":
+        try:
+            parts=q.data.split(":",3)
+            await send_employee_excel(q.message,parts[2],parts[3])
+        except Exception as e:
+            log.exception("Employee Excel export failed")
+            await q.message.reply_text(f"❌ Не удалось сформировать Excel: {e}")
+        return
+    if kind=="employees_excel_month":
+        try:
+            parts=q.data.split(":")
+            await send_employee_month_excel(q.message,int(parts[2]),int(parts[3]))
+        except Exception as e:
+            log.exception("Employee month Excel export failed")
+            await q.message.reply_text(f"❌ Не удалось сформировать Excel: {e}")
+        return
+    if kind=="canteen_excel":
+        try:
+            parts=q.data.split(":",3)
+            await send_canteen_excel(q.message,parts[2],parts[3])
+        except Exception as e:
+            log.exception("Canteen Excel export failed")
+            await q.message.reply_text(f"❌ Не удалось сформировать Excel: {e}")
+        return
+    if kind=="canteen_excel_month":
+        try:
+            parts=q.data.split(":")
+            await send_canteen_month_excel(q.message,int(parts[2]),int(parts[3]))
+        except Exception as e:
+            log.exception("Canteen month Excel export failed")
+            await q.message.reply_text(f"❌ Не удалось сформировать Excel: {e}")
+        return
     if kind=="employees_half":
         return await send_employee_report(q.message,
             f"{d.year:04d}-{d.month:02d}-01",f"{d.year:04d}-{d.month:02d}-16",
@@ -1053,6 +1146,20 @@ async def report_cb(update,ctx):
         return await send_canteen_month_report(q.message,d.year,d.month)
     return await q.edit_message_text("❌ Неизвестный отчёт.")
 
+def meal_entitlement(uid,kind):
+    """Норма питания:
+    1-я смена — обед + ужин.
+    2-я смена — только ужин.
+    Дополнительное питание оформляется отдельно и оплачивается сотрудником.
+    """
+    date=now().date().isoformat()
+    sh=shift_for(uid,date)
+    if kind=="Обед":
+        return sh in ("1-я","Нестандартная")
+    if kind=="Ужин":
+        return sh in ("1-я","2-я","Нестандартная")
+    return False
+
 async def meal_menu(update,ctx):
     tg=update.effective_user.id
     c=db();e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(tg,)).fetchone();c.close()
@@ -1065,21 +1172,30 @@ async def meal_menu(update,ctx):
     normal={r["meal_type"]:r for r in rows if not r["extra"]}
     extra_count=sum(1 for r in rows if r["extra"])
     buttons=[]
-    normal_kind="Обед" if shift in ("1-я","Нестандартная") else "Ужин" if shift=="2-я" else None
-    if normal_kind:
-        if normal_kind in normal:
-            r=normal[normal_kind]
-            cb=f"mealreturn:{normal_kind}" if r["status"]=="served" else "meal:noop:0"
-            buttons.append([InlineKeyboardButton(
-                f"{'🥗' if normal_kind=='Обед' else '🌙'} {normal_kind}: {r['status']}",callback_data=cb)])
+
+    # Нормальное питание показываем только по норме смены:
+    # 1-я смена — обед и ужин; 2-я смена — только ужин.
+    allowed=[k for k in ("Обед","Ужин") if meal_entitlement(e["dahua_id"],k)]
+    for kind in allowed:
+        if kind in normal:
+            r=normal[kind]
+            if r["status"]=="served":
+                buttons.append([InlineKeyboardButton(
+                    f"🔙 Вернулся с {kind.lower()}",
+                    callback_data=f"mealreturn:{kind}")])
+            else:
+                buttons.append([InlineKeyboardButton(
+                    f"{'🥗' if kind=='Обед' else '🌙'} {kind}: {r['status']}",
+                    callback_data="meal:noop:0")])
         else:
             buttons.append([InlineKeyboardButton(
-                f"{'🥗' if normal_kind=='Обед' else '🌙'} {normal_kind}",callback_data=f"meal:{normal_kind}:0")])
-    else:
-        buttons.append([InlineKeyboardButton("ℹ️ Смена не определена",callback_data="meal:noop:0")])
+                f"{'🥗' if kind=='Обед' else '🌙'} {kind}",
+                callback_data=f"meal:{kind}:0")])
+
     buttons.append([InlineKeyboardButton(
         f"➕ Дополнительное питание — за счёт сотрудника ({extra_count})",
         callback_data="meal:Дополнительное:1")])
+
     await update.message.reply_text(
         f"🍽 Питание\n👤 {e['name']}\n🔄 Смена: {shift}\n"
         f"➕ Дополнительных талонов сегодня: {extra_count}",
@@ -1090,26 +1206,33 @@ async def meal_cb(update,ctx):
     c=db();e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(tg,)).fetchone();c.close()
     if not e:return await q.edit_message_text("🔒 Доступ запрещён.")
     _,kind,extra=q.data.split(":",2)
-    if kind=="noop": return await q.answer("Нет доступного обычного питания.",show_alert=False)
+    if kind=="noop":return await q.answer("Нет доступного обычного питания.",show_alert=False)
+
     date=now().date().isoformat()
     mins=now().hour*60+now().minute
     if not (LUNCH_START<=mins<=LUNCH_END or DINNER_START<=mins<=DINNER_END):
         return await q.edit_message_text("⏰ Сейчас столовая вне времени питания.")
+
     extra=int(extra)
     if not extra:
+        # Защита от обхода кнопки: норма всегда проверяется на сервере.
         if not meal_entitlement(e["dahua_id"],kind):
             return await q.edit_message_text(
                 "❌ Это питание не входит в норму вашей смены.\n"
                 "Для дополнительного питания используйте отдельную кнопку.")
         c=db()
-        already=c.execute(            "SELECT id FROM meals WHERE dahua_id=? AND meal_date=? AND meal_type=? AND extra=0",
+        already=c.execute(
+            "SELECT id FROM meals WHERE dahua_id=? AND meal_date=? AND meal_type=? AND extra=0",
             (e["dahua_id"],date,kind)).fetchone()
         c.close()
         if already:return await q.edit_message_text("ℹ️ Обычный талон на это питание уже оформлен сегодня.")
+
     c=db()
-    c.execute("INSERT INTO meals(dahua_id,name,meal_type,meal_date,requested_at,extra) VALUES(?,?,?,?,?,?)",
-              (e["dahua_id"],e["name"],kind if not extra else "Дополнительное",date,now().isoformat(),extra))
+    c.execute(
+        "INSERT INTO meals(dahua_id,name,meal_type,meal_date,requested_at,extra) VALUES(?,?,?,?,?,?)",
+        (e["dahua_id"],e["name"],kind if not extra else "Дополнительное",date,now().isoformat(),extra))
     c.commit();c.close()
+
     label="Дополнительное питание — за счёт сотрудника" if extra else kind
     await q.edit_message_text(
         f"✅ Талон оформлен.\n\n{label}\n"
