@@ -397,8 +397,17 @@ async def access_cb(update,ctx):
     if role(q.from_user.id)!="owner":return await q.edit_message_text("🔒 Только владелец.")
     _,act,tid=q.data.split(":");tid=int(tid);c=db()
     if act=="deny":
-        c.execute("UPDATE access_requests SET status='denied' WHERE telegram_id=?",(tid,));c.commit();c.close();tg_send(tid,"❌ Доступ отклонён.");return await q.edit_message_text("❌ Отклонено.")    c.execute("INSERT OR REPLACE INTO user_roles VALUES(?,?)",(tid,act));c.execute("UPDATE access_requests SET status='approved',requested_role=? WHERE telegram_id=?",(act,tid));c.commit();c.close()    tg_send(tid,f"✅ Доступ подтверждён.\nРоль: {act}")    await q.edit_message_text(f"✅ Доступ выдан: {act}")async def registration_start(update,ctx):
-    if role(update.effective_user.id) not in ("none","employee"): return
+        c.execute("UPDATE access_requests SET status='denied' WHERE telegram_id=?",(tid,))
+        c.commit(); c.close()
+        tg_send(tid,"❌ Доступ отклонён.")
+        return await q.edit_message_text("❌ Отклонено.")
+    c.execute("INSERT OR REPLACE INTO user_roles VALUES(?,?)",(tid,act))
+    c.execute("UPDATE access_requests SET status='approved',requested_role=? WHERE telegram_id=?",(act,tid))
+    c.commit(); c.close()
+    tg_send(tid,f"✅ Доступ подтверждён.\nРоль: {act}")
+    await q.edit_message_text(f"✅ Доступ выдан: {act}")
+
+async def registration_start(update,ctx):    if role(update.effective_user.id) not in ("none","employee"): return
     ctx.user_data.clear(); ctx.user_data["reg_fio"]=True
     await update.message.reply_text(
         "📝 Регистрация сотрудника\n\nШаг 1 из 3\nВведите ФИО сотрудника:",
@@ -797,8 +806,7 @@ def create_employee_excel(start,end,title):
     from openpyxl import Workbook
     rows=employee_report_rows(start,end)    wb=Workbook(); ws=wb.active; ws.title="Сотрудники"
     ws.append(["№","Фамилия / ФИО","Дней","Проходов"])    for i,r in enumerate(rows,1):
-        ws.append([i,r["name"],int(r["days"] or 0),int(r["passes"] or 0)])
-    ws.append([]); ws.append(["","ИТОГО",len(rows),sum(int(r["passes"] or 0) for r in rows)])
+        ws.append([i,r["name"],int(r["days"] or 0),int(r["passes"] or 0)])    ws.append([]); ws.append(["","ИТОГО",len(rows),sum(int(r["passes"] or 0) for r in rows)])
     for col,width in {"A":7,"B":38,"C":12,"D":14}.items(): ws.column_dimensions[col].width=width
     filepath=os.path.join(tempfile.gettempdir(),"EMPLOYEES_REPORT.xlsx"); wb.save(filepath); return filepath
 
@@ -1197,8 +1205,7 @@ def predicted_days_off(date=None,weeks=8):
             result.append((e["name"],absent,observed))
     return result
 async def control(update,ctx):
-    if role(update.effective_user.id) not in ("owner","control"): return
-    date=now().date().isoformat()
+    if role(update.effective_user.id) not in ("owner","control"): return    date=now().date().isoformat()
     c=db(); emps=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall(); c.close()
 
     at=late=early=first_shift=second_shift=arrived=left=0
