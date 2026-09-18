@@ -754,9 +754,102 @@ async def newemp_cb(update,ctx):
 async def report_menu(update,ctx):
     if role(update.effective_user.id)!="owner": return
     await update.message.reply_text("📊 Отчёты:",reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("📅 1–15 число",callback_data="report:half")],
-        [InlineKeyboardButton("📅 16–конец месяца",callback_data="report:second")],
-        [InlineKeyboardButton("🗓 Весь месяц",callback_data="report:month")]
+        [InlineKeyboardButton("👥 Отчёт сотрудников",callback_data="report:employees")],
+        [InlineKeyboardButton("🍽 Отчёт столовой",callback_data="report:canteen")]
+    ]))
+
+async def employee_report_menu(update,ctx):
+    await update.callback_query.edit_message_text(
+        "👥 Отчёт сотрудников — выберите период:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📅 1–15 число",callback_data="report:employees_half")],
+            [InlineKeyboardButton("📅 16–конец месяца",callback_data="report:employees_second")],
+            [InlineKeyboardButton("🗓 Весь месяц",callback_data="report:employees_month")],
+            [InlineKeyboardButton("↩️ Назад",callback_data="report:back")]
+        ])
+    )
+
+async def canteen_report_menu(update,ctx):
+    await update.callback_query.edit_message_text(
+        "🍽 Отчёт столовой — выберите период:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📅 1–15 число",callback_data="report:canteen_half")],
+            [InlineKeyboardButton("📅 16–конец месяца",callback_data="report:canteen_second")],
+            [InlineKeyboardButton("🗓 Весь месяц",callback_data="report:canteen_month")],
+            [InlineKeyboardButton("↩️ Назад",callback_data="report:back")]
+        ])
+    )
+
+async def send_employee_report(message,start,end,title):
+    c=db()
+    total=c.execute(
+        "SELECT COUNT(DISTINCT user_id) n, COUNT(*) passes "
+        "FROM attendance WHERE event_time>=? AND event_time<? "
+        "AND user_id IS NOT NULL AND user_id!=''",
+        (start,end)
+    ).fetchone()
+    rows=c.execute(
+        "SELECT user_id,MAX(name) name,COUNT(*) passes,COUNT(DISTINCT substr(event_time,1,10)) days "
+        "FROM attendance WHERE event_time>=? AND event_time<? "
+        "AND user_id IS NOT NULL AND user_id!='' "
+        "GROUP BY user_id ORDER BY name",
+        (start,end)
+    ).fetchall()
+    c.close()
+
+    text=[
+        title,"",
+        f"👥 Уникальных сотрудников: {total['n'] or 0}",
+        f"🚪 Всего проходов: {total['passes'] or 0}",
+        "",
+        "👤 СОТРУДНИКИ:"
+    ]
+    if rows:
+        for r in rows:
+            text.append(f"• {r['name']} — {r['days']} дн. / {r['passes']} проход.")
+    else:
+        text.append("Нет записей о проходах.")
+
+    await message.reply_text("\\n".join(text))
+
+async def send_employee_month_report(message,year,month):
+    import calendar
+    last_day=calendar.monthrange(year,month)[1]
+    start1=f"{year:04d}-{month:02d}-01"; end1=f"{year:04d}-{month:02d}-16"
+    start2=f"{year:04d}-{month:02d}-16"; end2=f"{year:04d}-{month:02d}-{last_day:02d}"
+    c=db()
+    total=c.execute(
+        "SELECT COUNT(DISTINCT user_id) n, COUNT(*) passes "
+        "FROM attendance WHERE event_time>=? AND event_time<? "
+        "AND user_id IS NOT NULL AND user_id!=''",
+        (start1,end2)
+    ).fetchone()
+    a=c.execute(
+        "SELECT COUNT(DISTINCT user_id) n,COUNT(*) passes FROM attendance "
+        "WHERE event_time>=? AND event_time<? AND user_id IS NOT NULL AND user_id!=''",
+        (start1,end1)
+    ).fetchone()
+    b=c.execute(
+        "SELECT COUNT(DISTINCT user_id) n,COUNT(*) passes FROM attendance "
+        "WHERE event_time>=? AND event_time<? AND user_id IS NOT NULL AND user_id!=''",
+        (start2,end2)
+    ).fetchone()
+    c.close()
+    await message.reply_text("\\n".join([
+        f"👥 СОТРУДНИКИ — ВЕСЬ МЕСЯЦ {month:02d}.{year}",
+        "",
+        "📅 1–15 число",
+        f"👥 Уникальных сотрудников: {a['n'] or 0}",
+        f"🚪 Проходов: {a['passes'] or 0}",
+        "",
+        f"📅 16–{last_day} число",
+        f"👥 Уникальных сотрудников: {b['n'] or 0}",
+        f"🚪 Проходов: {b['passes'] or 0}",
+        "",
+        "────────────────",
+        f"🗓 ИТОГО ЗА МЕСЯЦ",
+        f"👥 Уникальных сотрудников: {total['n'] or 0}",
+        f"🚪 Проходов: {total['passes'] or 0}"
     ]))
 
 async def send_canteen_report(message,start,end,title):
@@ -834,15 +927,32 @@ async def report_cb(update,ctx):
     d=now()
     import calendar
     last_day=calendar.monthrange(d.year,d.month)[1]
-    if kind=="half":
+
+    if kind=="employees":
+        return await employee_report_menu(update,ctx)
+    if kind=="canteen":
+        return await canteen_report_menu(update,ctx)
+    if kind=="back":
+        return await report_menu(q.message,ctx)
+    if kind=="employees_half":
+        return await send_employee_report(q.message,
+            f"{d.year:04d}-{d.month:02d}-01",f"{d.year:04d}-{d.month:02d}-16",
+            f"👥 СОТРУДНИКИ — РАСЧЁТНЫЙ ПЕРИОД 1–15.{d.month:02d}.{d.year}")
+    if kind=="employees_second":
+        return await send_employee_report(q.message,
+            f"{d.year:04d}-{d.month:02d}-16",f"{(d+timedelta(days=1)):%Y-%m-%d}",
+            f"👥 СОТРУДНИКИ — РАСЧЁТНЫЙ ПЕРИОД 16–{last_day}.{d.month:02d}.{d.year}")
+    if kind=="employees_month":
+        return await send_employee_month_report(q.message,d.year,d.month)
+    if kind=="canteen_half":
         return await send_canteen_report(q.message,
             f"{d.year:04d}-{d.month:02d}-01",f"{d.year:04d}-{d.month:02d}-15",
             f"🍽 СТОЛОВАЯ — РАСЧЁТНЫЙ ПЕРИОД 1–15.{d.month:02d}.{d.year}")
-    if kind=="second":
+    if kind=="canteen_second":
         return await send_canteen_report(q.message,
             f"{d.year:04d}-{d.month:02d}-16",f"{d.year:04d}-{d.month:02d}-{last_day:02d}",
             f"🍽 СТОЛОВАЯ — РАСЧЁТНЫЙ ПЕРИОД 16–{last_day}.{d.month:02d}.{d.year}")
-    if kind=="month":
+    if kind=="canteen_month":
         return await send_canteen_month_report(q.message,d.year,d.month)
     return await q.edit_message_text("❌ Неизвестный отчёт.")
 
