@@ -398,7 +398,6 @@ async def access_cb(update,ctx):
     _,act,tid=q.data.split(":");tid=int(tid);c=db()
     if act=="deny":
         c.execute("UPDATE access_requests SET status='denied' WHERE telegram_id=?",(tid,));c.commit();c.close();tg_send(tid,"❌ Доступ отклонён.");return await q.edit_message_text("❌ Отклонено.")    c.execute("INSERT OR REPLACE INTO user_roles VALUES(?,?)",(tid,act));c.execute("UPDATE access_requests SET status='approved',requested_role=? WHERE telegram_id=?",(act,tid));c.commit();c.close()    tg_send(tid,f"✅ Доступ подтверждён.\nРоль: {act}")    await q.edit_message_text(f"✅ Доступ выдан: {act}")
-
 async def registration_start(update,ctx):
     if role(update.effective_user.id) not in ("none","employee"): return
     ctx.user_data.clear(); ctx.user_data["reg_fio"]=True
@@ -797,8 +796,7 @@ def employee_report_rows(start,end):
 
 def create_employee_excel(start,end,title):
     from openpyxl import Workbook
-    rows=employee_report_rows(start,end)
-    wb=Workbook(); ws=wb.active; ws.title="Сотрудники"
+    rows=employee_report_rows(start,end)    wb=Workbook(); ws=wb.active; ws.title="Сотрудники"
     ws.append(["№","Фамилия / ФИО","Дней","Проходов"])
     for i,r in enumerate(rows,1):
         ws.append([i,r["name"],int(r["days"] or 0),int(r["passes"] or 0)])
@@ -1197,36 +1195,40 @@ def predicted_days_off(date=None,weeks=8):
             day=d-timedelta(weeks=w)
             rows=last_events(e["dahua_id"],day.isoformat())
             observed+=1
-            if not rows: absent+=1
-        if observed>=4 and absent/observed>=0.70:
+            if not rows: absent+=1        if observed>=4 and absent/observed>=0.70:
             result.append((e["name"],absent,observed))
     return result
 
 async def control(update,ctx):
     if role(update.effective_user.id) not in ("owner","control"): return
     date=now().date().isoformat()
-    c=db();emps=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall();c.close()
+    c=db(); emps=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall(); c.close()
+
     at=late=early=first_shift=second_shift=arrived=left=0
-    at_lines=[];lunch_lines=[];dinner_lines=[]
+    at_lines=[]; lunch_lines=[]; dinner_lines=[]
+
     for e in emps:
         rows=last_events(e["dahua_id"],date)
         if not rows: continue
         sh=shift_for(e["dahua_id"],date)
-        if any(x["event_type"]=="Entry" for x in rows):
-            arrived+=1        if rows[-1]["event_type"]=="Exit":
-            left+=1
+        if any(x["event_type"]=="Entry" for x in rows): arrived+=1
+        if rows[-1]["event_type"]=="Exit": left+=1
         if rows[-1]["event_type"]=="Entry":
             at+=1
             if sh in ("1-я","Нестандартная"): first_shift+=1
             elif sh=="2-я": second_shift+=1
             at_lines.append(f"🟢 {e['name']} — {sh}")
-        ins=[r for r in rows if r["event_type"]=="Entry"];outs=[r for r in rows if r["event_type"]=="Exit"]
+        ins=[r for r in rows if r["event_type"]=="Entry"]
+        outs=[r for r in rows if r["event_type"]=="Exit"]
         if ins:
-            first=datetime.fromisoformat(ins[0]["event_time"]);start=10 if sh in ("1-я","Нестандартная") else 13
-            if first.hour*60+first.minute>start*60+5: late+=1
+            first=datetime.fromisoformat(ins[0]["event_time"])
+            start_time=10 if sh in ("1-я","Нестандартная") else 13
+            if first.hour*60+first.minute>start_time*60+5: late+=1
         if outs:
-            last=datetime.fromisoformat(outs[-1]["event_time"]);limit=21 if sh in ("1-я","Нестандартная") else 22
+            last=datetime.fromisoformat(outs[-1]["event_time"])
+            limit=21 if sh in ("1-я","Нестандартная") else 22
             if last.hour<limit: early+=1
+
     c=db()
     lunch_rows=c.execute("SELECT name,dahua_id FROM meals WHERE meal_date=? AND meal_type='Обед' AND status='served' AND returned_at IS NULL ORDER BY served_at",(date,)).fetchall()
     dinner_rows=c.execute("SELECT name,dahua_id FROM meals WHERE meal_date=? AND meal_type='Ужин' AND status='served' AND returned_at IS NULL ORDER BY served_at",(date,)).fetchall()
@@ -1234,6 +1236,7 @@ async def control(update,ctx):
     dinner_requested=c.execute("SELECT COUNT(*) n FROM meals WHERE meal_date=? AND meal_type='Ужин' AND status IN ('requested','served')",(date,)).fetchone()["n"]
     extra_count=c.execute("SELECT COUNT(*) n FROM meals WHERE meal_date=? AND extra=1",(date,)).fetchone()["n"]
     c.close()
+
     lunch_first=lunch_second=dinner_first=dinner_second=0
     for r in lunch_rows:
         sh=shift_for(r["dahua_id"],date)
@@ -1245,34 +1248,39 @@ async def control(update,ctx):
         if sh in ("1-я","Нестандартная"): dinner_first+=1
         elif sh=="2-я": dinner_second+=1
         dinner_lines.append(f"🌙 {r['name']} — {sh}")
+
     predictions=predicted_days_off()
     text=[
         f"📊 СЕЙЧАС НА РАБОТЕ — {now():%d.%m.%Y}","",
-        f"😴 Предположительно сегодня отдыхают: {len(predictions)}",
+        "📌 ОБЩАЯ СТАТИСТИКА:",
         f"👥 Всего активных сотрудников: {len(emps)}",
         f"🟢 Пришли сегодня: {arrived}",
         f"🔴 Ушли сегодня: {left}",
         f"👥 Сейчас на работе: {at}",
-        f"1️⃣ Первая смена: {first_shift}",        f"2️⃣ Вторая смена: {second_shift}","",
-        f"🥗 Сейчас на обеде: {len(lunch_rows)}",
+        f"1️⃣ Первая смена: {first_shift}",
+        f"2️⃣ Вторая смена: {second_shift}","",
+        "🍽 ПИТАНИЕ СЕЙЧАС:",
+        f"🥗 На обеде: {len(lunch_rows)}",
         f"   1️⃣ Первая смена: {lunch_first}",
-        f"   2️⃣ Вторая смена: {lunch_second}","",
-        f"🌙 Сейчас на ужине: {len(dinner_rows)}",
+        f"   2️⃣ Вторая смена: {lunch_second}",
+        f"🌙 На ужине: {len(dinner_rows)}",
         f"   1️⃣ Первая смена: {dinner_first}",
         f"   2️⃣ Вторая смена: {dinner_second}","",
+        "📋 ЗАЯВКИ НА ПИТАНИЕ:",
         f"🥗 Обед оформлен: {lunch_requested}",
         f"🌙 Ужин оформлен: {dinner_requested}",
-        f"➕ Дополнительных талонов: {extra_count}",
+        f"➕ Дополнительных талонов: {extra_count}","",
+        "⏱ ДИСЦИПЛИНА:",
         f"⏰ Опоздали: {late}",
         f"⚠️ Ранний уход: {early}"
     ]
-    if at_lines:text += ["","👥 НА РАБОТЕ:"]+at_lines
-    if lunch_lines:text += ["","🥗 СЕЙЧАС НА ОБЕДЕ:"]+lunch_lines
-    if dinner_lines:text += ["","🌙 СЕЙЧАС НА УЖИНЕ:"]+dinner_lines
+    if at_lines: text += ["","👥 СЕЙЧАС НА РАБОТЕ:"] + at_lines
+    if lunch_lines: text += ["","🥗 СЕЙЧАС НА ОБЕДЕ:"] + lunch_lines
+    if dinner_lines: text += ["","🌙 СЕЙЧАС НА УЖИНЕ:"] + dinner_lines
     if predictions:
-        text += ["","😴 ПРЕДПОЛАГАЕМЫЕ ВЫХОДНЫЕ (по истории):"]
-        text += [f"• {name} — {absent} из {observed} таких дней без прохода" for name,absent,observed in predictions]
-    text += ["","⚠️ Это прогноз по истории Dahua, а не утверждённый график."]
+        text += ["","😴 ПРЕДПОЛАГАЕМЫЕ ВЫХОДНЫЕ ПО ИСТОРИИ:",f"Всего: {len(predictions)}"]
+        text += [f"• {name} — без прохода {absent} из {observed} аналогичных дней" for name,absent,observed in predictions]
+        text += ["⚠️ Это прогноз по истории Dahua, а не утверждённый график."]
     await update.message.reply_text("\n".join(text))
 
 async def qr(update,ctx):    if role(update.effective_user.id) not in ("owner","employee"):return
