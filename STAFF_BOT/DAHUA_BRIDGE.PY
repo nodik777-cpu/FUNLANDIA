@@ -121,9 +121,8 @@ def next_dahua_user_id():
     return str(max(vals+[0])+1)
 
 def ensure_dahua_user(user_id,name):
-    # ASI6XXX: используем исходный способ регистрации пользователя.
-    # AccessControlCard здесь НЕ создаём и НЕ изменяем.
-    # Для существующего UserID повторный addUser может вернуть duplicate/exist.
+    # Сохраняем проверенную логику: addUser подготавливает UserID,
+    # но отказ/duplicate не блокирует последующую загрузку Face ID.
     r=requests.get(DAHUA_URL+"/cgi-bin/Attendance.cgi",
         params={"action":"addUser","UserID":str(user_id),"UserName":str(name)[:32]},
         auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
@@ -131,11 +130,9 @@ def ensure_dahua_user(user_id,name):
     txt=r.text.strip()
     if r.ok and txt.upper()=="OK":
         return True
-    if "exist" in txt.lower() or "duplicate" in txt.lower():
-        return True
-    # Не продолжаем молча: FaceInfoManager должен работать только после
-    # успешного создания нового Dahua UserID.
-    raise RuntimeError(f"Dahua user enrollment failed: HTTP {r.status_code}: {txt[:500]}")
+    # Если UserID уже существует или прошивка отвечает ошибкой на addUser,
+    # FaceInfoManager всё равно должен получить возможность зарегистрировать лицо.
+    return False
 
 def prepare_face_photo(photo_bytes):
     img=Image.open(BytesIO(photo_bytes)).convert("RGB")
