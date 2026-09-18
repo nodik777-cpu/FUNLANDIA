@@ -1083,12 +1083,6 @@ async def report_cb(update,ctx):
             ])
         )
     if kind=="employees_excel":
-        parts=q.data.split(":",3)
-        return await send_employee_excel(q.message,parts[2],parts[3])
-    if kind=="employees_excel_month":
-        parts=q.data.split(":")
-        return await send_employee_month_excel(q.message,int(parts[2]),int(parts[3]))
-    if kind=="employees_excel":
         try:
             parts=q.data.split(":",3)
             await send_employee_excel(q.message,parts[2],parts[3])
