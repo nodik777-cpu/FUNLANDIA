@@ -816,7 +816,11 @@ async def send_employee_month_report(message,year,month):
     import calendar
     last_day=calendar.monthrange(year,month)[1]
     start1=f"{year:04d}-{month:02d}-01"; end1=f"{year:04d}-{month:02d}-16"
-    start2=f"{year:04d}-{month:02d}-16"; end2=f"{year:04d}-{month:02d}-{last_day:02d}"
+    start2=f"{year:04d}-{month:02d}-16"
+    if month==12:
+        end2=f"{year+1:04d}-01-01"
+    else:
+        end2=f"{year:04d}-{month+1:02d}-01"
     c=db()
     total=c.execute(
         "SELECT COUNT(DISTINCT user_id) n, COUNT(*) passes "
