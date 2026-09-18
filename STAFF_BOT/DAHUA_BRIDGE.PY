@@ -657,9 +657,14 @@ async def create_control_approval(update,ctx,dahua_id):
                 {"text":"❌ Отклонить","callback_data":f"newemp:no:{req_id}"}
             ]]})
     ctx.user_data.clear()
-    await update.callback_query.edit_message_text(
+    msg=update.callback_query
+    text=(
         f"⏳ Face ID зарегистрирован.\\n\\n👤 {e['name']}\\n🆔 {e['internal_id'] or '—'}\\n\\n"
         "Заявка отправлена владельцу. До подтверждения сотрудник не активен.")
+    if msg:
+        await msg.edit_message_text(text)
+    elif update.message:
+        await update.message.reply_text(text)
     return True
 
 async def newemp_cb(update,ctx):
