@@ -149,19 +149,18 @@ def prepare_face_photo(photo_bytes):
     return last
 
 def save_registration_photo(user_id,name,photo_bytes):
-    prepared=prepare_face_photo(photo_bytes)
-    ensure_dahua_user(user_id,name)
-    encoded=base64.b64encode(prepared).decode("ascii")
-    if len(encoded)>200*1024:
-        raise ValueError("Фото после Base64 больше 200 KB.")
+    # ВОССТАНОВЛЕН ТОЧНОЙ РАБОЧЕЙ ЛОГИКОЙ ДОБАВЛЕНИЯ FACE ID:
+    # FaceInfoManager сам принимает UserID и фотографию.
+    # Attendance.cgi?action=addUser здесь НЕ вызываем.
+    if len(photo_bytes)>200*1024:
+        raise ValueError("Фото больше 200 KB.")
     payload={"UserID":str(user_id),"Info":{"UserName":str(name)[:32],
-        "PhotoData":[encoded]}}
+        "PhotoData":[base64.b64encode(photo_bytes).decode("ascii")]}}
     r=requests.post(DAHUA_URL+"/cgi-bin/FaceInfoManager.cgi",
         params={"action":"add"},json=payload,
         auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
         verify=False,timeout=25)
-    if not r.ok:
-        raise RuntimeError(f"Dahua HTTP {r.status_code}: {r.text.strip()[:500]}")
+    r.raise_for_status()
     if r.text.strip().upper()!="OK":
         raise RuntimeError(f"Dahua ответил: {r.text.strip()[:300]}")
     return True
