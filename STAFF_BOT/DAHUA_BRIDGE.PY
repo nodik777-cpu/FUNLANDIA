@@ -1291,7 +1291,8 @@ async def control(update,ctx):
         text += ["⚠️ Это прогноз по истории Dahua, а не утверждённый график."]
     await update.message.reply_text("\n".join(text))
 
-async def qr(update,ctx):    if role(update.effective_user.id) not in ("owner","employee"):return
+async def qr(update,ctx):
+    if role(update.effective_user.id) not in ("owner","employee"): return
     me=await ctx.bot.get_me();url=f"https://t.me/{me.username}?start=meal"
     img=qrcode.make(url);bio=BytesIO();bio.name="FUNLANDIA_QR_STOLOVAYA.png";img.save(bio,"PNG");bio.seek(0)
     await update.message.reply_photo(photo=bio,caption="📱 QR-код столовой\n\nСотрудник сканирует код → открывается Staff Bot → система проверяет его Telegram-доступ.")
