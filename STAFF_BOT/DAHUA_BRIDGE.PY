@@ -128,6 +128,36 @@ def ensure_dahua_user(user_id,name):
         return True
     raise RuntimeError(f"Dahua user enrollment failed: HTTP {r.status_code}: {txt[:500]}")
 
+def delete_dahua_user(user_id):
+    uid=str(user_id)
+    # 1) Remove the face template.
+    face=requests.get(DAHUA_URL+"/cgi-bin/FaceInfoManager.cgi",
+        params={"action":"remove","UserID":uid},
+        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),verify=False,timeout=20)
+    face_txt=face.text.strip()
+    if not face.ok or ("error" in face_txt.lower() or "failed" in face_txt.lower()):
+        raise RuntimeError(f"Не удалось удалить Face ID: HTTP {face.status_code}: {face_txt[:300]}")
+
+    # 2) Remove the AccessControlCard record(s) belonging to this UserID.
+    r=requests.get(DAHUA_URL+"/cgi-bin/recordFinder.cgi",
+        params={"action":"find","name":"AccessControlCard","UserID":uid,"count":"100"},
+        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),verify=False,timeout=20)
+    r.raise_for_status()
+    rows={}
+    for line in r.text.replace("\r","").splitlines():
+        m=re.match(r"records\\[(\\d+)\\]\\.([^=]+)=(.*)$",line)
+        if m: rows.setdefault(m.group(1),{})[m.group(2)]=m.group(3)
+    for row in rows.values():
+        recno=str(row.get("RecNo","")).strip()
+        if not recno: continue
+        rem=requests.get(DAHUA_URL+"/cgi-bin/recordUpdater.cgi",
+            params={"action":"remove","name":"AccessControlCard","recno":recno},
+            auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),verify=False,timeout=20)
+        txt=rem.text.strip()
+        if not rem.ok or ("error" in txt.lower() or "failed" in txt.lower()):
+            raise RuntimeError(f"Не удалось удалить запись Dahua recno={recno}: HTTP {rem.status_code}: {txt[:300]}")
+    return True
+
 def prepare_face_photo(photo_bytes):
     img=Image.open(BytesIO(photo_bytes)).convert("RGB")
     img.thumbnail((500,500),Image.Resampling.LANCZOS)
@@ -411,20 +441,61 @@ async def reg_cb(update,ctx):
 
 async def employees(update,ctx):
     if role(update.effective_user.id)!="owner":return
-    c=db();rows=c.execute("SELECT * FROM employees ORDER BY active DESC,name").fetchall();c.close()
-    if not rows:return await update.message.reply_text("Сотрудников пока нет.")
+    c=db();rows=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall();c.close()
+    if not rows:return await update.message.reply_text("Активных сотрудников пока нет.")
     for e in rows[:50]:
-        st="🟢" if e["active"] else "🔴"
-        mk={"inline_keyboard":[[{"text":"🚫 Отключить" if e["active"] else "♻️ Активировать","callback_data":f"emp:{'off' if e['active'] else 'on'}:{e['dahua_id']}"}]]}
-        await update.message.reply_text(f"{st} {e['name']}\nFace ID: {e['dahua_id']}\nTelegram: {e['telegram_id'] or '—'}",reply_markup=mk)
+        mk={"inline_keyboard":[[
+            {"text":"🚫 Уволить сотрудника","callback_data":f"emp:delete:{e['dahua_id']}"}
+        ]]}
+        await update.message.reply_text(
+            f"🟢 {e['name']}\n"
+            f"🆔 {e['internal_id'] or '—'}\n"
+            f"Face ID: {e['dahua_id']}\n"
+            f"Telegram: {e['telegram_id'] or '—'}",
+            reply_markup=mk)
 
 async def emp_cb(update,ctx):
     q=update.callback_query;await q.answer()
     if role(q.from_user.id)!="owner":return await q.edit_message_text("🔒 Только владелец.")
-    _,act,uid=q.data.split(":");c=db()
-    if act=="off":c.execute("UPDATE employees SET active=0,telegram_id=NULL WHERE dahua_id=?",(uid,));msg="🚫 Питание отключено."
-    else:c.execute("UPDATE employees SET active=1 WHERE dahua_id=?",(uid,));msg="♻️ Питание снова разрешено."
-    c.commit();c.close();await q.edit_message_text(msg)
+    _,act,uid=q.data.split(":")
+    if act!="delete":return await q.edit_message_text("❌ Неизвестная операция.")
+
+    c=db(); e=c.execute("SELECT * FROM employees WHERE dahua_id=? AND active=1",(uid,)).fetchone(); c.close()
+    if not e:
+        return await q.edit_message_text("❌ Активный сотрудник не найден.")
+
+    # Сначала удаляем доступ на Dahua. Если это не удалось — локального
+    # сотрудника не удаляем, чтобы не получить рассинхронизацию.
+    try:
+        delete_dahua_user(uid)
+    except Exception as ex:
+        log.exception("Dahua employee deletion failed for %s",uid)
+        return await q.edit_message_text(
+            f"❌ Не удалось уволить сотрудника.\n\n"
+            f"Face ID и доступ Dahua НЕ удалены.\n"
+            f"Сотрудник оставлен в базе.\n\n"
+            f"Технический ответ: {ex}")
+
+    c=db()
+    tg=e["telegram_id"]
+    c.execute("DELETE FROM employees WHERE dahua_id=?",(uid,))
+    if tg:
+        c.execute("DELETE FROM registration_requests WHERE telegram_id=?",(tg,))
+        c.execute("DELETE FROM access_requests WHERE telegram_id=?",(tg,))
+    c.commit();c.close()
+
+    if tg:
+        tg_send(tg,"🚫 Вы уволены из системы Staff Bot Funlandia.\n\nДоступ к столовой и Staff Bot закрыт.\nЕсли вы снова станете сотрудником, потребуется новая регистрация.")
+    await q.edit_message_text(
+        f"🚫 Сотрудник уволен.\n\n"
+        f"👤 {e['name']}\n"
+        f"🆔 {e['internal_id'] or '—'}\n\n"
+        f"✅ Face ID удалён из Dahua\n"
+        f"✅ Доступ к столовой удалён\n"
+        f"✅ Сотрудник удалён из текущей базы\n"
+        f"📊 История прихода/ухода сохранена\n"
+        f"🍽 История питания сохранена\n\n"
+        f"Для повторного трудоустройства нужна новая регистрация.")
 
 
 async def owner_add_start(update,ctx):
