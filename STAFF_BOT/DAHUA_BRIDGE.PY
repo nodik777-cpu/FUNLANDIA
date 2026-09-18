@@ -121,18 +121,73 @@ def next_dahua_user_id():
     return str(max(vals+[0])+1)
 
 def ensure_dahua_user(user_id,name):
-    # Сохраняем проверенную логику: addUser подготавливает UserID,
-    # но отказ/duplicate не блокирует последующую загрузку Face ID.
-    r=requests.get(DAHUA_URL+"/cgi-bin/Attendance.cgi",
-        params={"action":"addUser","UserID":str(user_id),"UserName":str(name)[:32]},
+    # Для ASI6213S-PW сначала должен существовать AccessControlCard,
+    # затем FaceInfoManager добавляет к этому UserID лицо.
+    # Attendance.cgi?action=addUser на этой прошивке возвращает HTTP 400,
+    # поэтому этот старый путь больше не используем.
+    uid=str(user_id)
+    finder=requests.get(
+        DAHUA_URL+"/cgi-bin/recordFinder.cgi",
+        params={
+            "action":"find",
+            "name":"AccessControlCard",
+            "condition.UserID":uid,
+            "count":"100"
+        },
+        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
+        verify=False,timeout=20)
+    if not finder.ok:
+        raise RuntimeError(
+            f"Dahua AccessControlCard check failed: HTTP {finder.status_code}: "
+            f"{finder.text.strip()[:300]}"
+        )
+
+    if re.search(r"records\\[\\d+\\]\\.UserID="+re.escape(uid)+r"(?:\\r?\\n|$)",finder.text):
+        return True
+
+    params={
+        "action":"insert",
+        "name":"AccessControlCard",
+        "CardName":str(name)[:32],
+        "CardNo":uid,
+        "UserID":uid,
+        "CardStatus":"0",
+        "CardType":"0"
+    }
+    r=requests.get(
+        DAHUA_URL+"/cgi-bin/recordUpdater.cgi",
+        params=params,
         auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
         verify=False,timeout=20)
     txt=r.text.strip()
-    if r.ok and txt.upper()=="OK":
+    if r.ok and (
+        txt.upper()=="OK" or
+        re.search(r"(?:RecNo|recno)\\s*=\\s*\\d+",txt)
+    ):
         return True
-    # Если UserID уже существует или прошивка отвечает ошибкой на addUser,
-    # FaceInfoManager всё равно должен получить возможность зарегистрировать лицо.
-    return False
+
+    # Если запись уже появилась параллельно или осталась от предыдущей
+    # попытки, повторно проверяем её перед выдачей ошибки.
+    finder2=requests.get(
+        DAHUA_URL+"/cgi-bin/recordFinder.cgi",
+        params={
+            "action":"find",
+            "name":"AccessControlCard",
+            "condition.UserID":uid,
+            "count":"100"
+        },
+        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
+        verify=False,timeout=20)
+    if finder2.ok and re.search(
+        r"records\\[\\d+\\]\\.UserID="+re.escape(uid)+r"(?:\\r?\\n|$)",
+        finder2.text
+    ):
+        return True
+
+    raise RuntimeError(
+        f"Dahua AccessControlCard enrollment failed: HTTP {r.status_code}: "
+        f"{txt[:500]}"
+    )
 
 def prepare_face_photo(photo_bytes):
     img=Image.open(BytesIO(photo_bytes)).convert("RGB")
