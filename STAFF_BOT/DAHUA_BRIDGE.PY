@@ -397,8 +397,7 @@ async def access_cb(update,ctx):
     if role(q.from_user.id)!="owner":return await q.edit_message_text("🔒 Только владелец.")
     _,act,tid=q.data.split(":");tid=int(tid);c=db()
     if act=="deny":
-        c.execute("UPDATE access_requests SET status='denied' WHERE telegram_id=?",(tid,));c.commit();c.close();tg_send(tid,"❌ Доступ отклонён.");return await q.edit_message_text("❌ Отклонено.")    c.execute("INSERT OR REPLACE INTO user_roles VALUES(?,?)",(tid,act));c.execute("UPDATE access_requests SET status='approved',requested_role=? WHERE telegram_id=?",(act,tid));c.commit();c.close()    tg_send(tid,f"✅ Доступ подтверждён.\nРоль: {act}")
-    await q.edit_message_text(f"✅ Доступ выдан: {act}")
+        c.execute("UPDATE access_requests SET status='denied' WHERE telegram_id=?",(tid,));c.commit();c.close();tg_send(tid,"❌ Доступ отклонён.");return await q.edit_message_text("❌ Отклонено.")    c.execute("INSERT OR REPLACE INTO user_roles VALUES(?,?)",(tid,act));c.execute("UPDATE access_requests SET status='approved',requested_role=? WHERE telegram_id=?",(act,tid));c.commit();c.close()    tg_send(tid,f"✅ Доступ подтверждён.\nРоль: {act}")    await q.edit_message_text(f"✅ Доступ выдан: {act}")
 
 async def registration_start(update,ctx):
     if role(update.effective_user.id) not in ("none","employee"): return
@@ -778,6 +777,24 @@ async def canteen_report_menu(update,ctx):
         ])
     )
 
+def employee_report_rows(start,end):
+    c=db()
+    rows=c.execute(
+        "SELECT user_id,name,days,passes FROM ("
+        "SELECT a.user_id,MAX(a.name) name,"
+        "COUNT(DISTINCT substr(a.event_time,1,10)) days,COUNT(a.rec_no) passes "
+        "FROM attendance a WHERE a.event_time>=? AND a.event_time<? "
+        "AND a.user_id IS NOT NULL AND a.user_id!='' GROUP BY a.user_id "
+        "UNION ALL "
+        "SELECT e.dahua_id,e.name,0,0 FROM employees e "
+        "WHERE e.active=1 AND NOT EXISTS (SELECT 1 FROM attendance a "
+        "WHERE a.user_id=e.dahua_id AND a.event_time>=? AND a.event_time<?)"
+        ") ORDER BY UPPER(name)",
+        (start,end,start,end)
+    ).fetchall()
+    c.close()
+    return rows
+
 def create_employee_excel(start,end,title):
     from openpyxl import Workbook
     rows=employee_report_rows(start,end)
@@ -797,8 +814,7 @@ async def send_employee_excel(message,start,end):
     except OSError: pass
 
 async def send_employee_month_excel(message,year,month):
-    import calendar
-    last_day=calendar.monthrange(year,month)[1]
+    import calendar    last_day=calendar.monthrange(year,month)[1]
     start1=f"{year:04d}-{month:02d}-01"; end1=f"{year:04d}-{month:02d}-16"
     start2=f"{year:04d}-{month:02d}-16"
     end2=f"{year+1:04d}-01-01" if month==12 else f"{year:04d}-{month+1:02d}-01"
@@ -1197,8 +1213,7 @@ async def control(update,ctx):
         if not rows: continue
         sh=shift_for(e["dahua_id"],date)
         if any(x["event_type"]=="Entry" for x in rows):
-            arrived+=1
-        if rows[-1]["event_type"]=="Exit":
+            arrived+=1        if rows[-1]["event_type"]=="Exit":
             left+=1
         if rows[-1]["event_type"]=="Entry":
             at+=1
