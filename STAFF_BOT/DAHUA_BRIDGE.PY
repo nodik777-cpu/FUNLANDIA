@@ -1194,7 +1194,8 @@ def sync_month(year=None, month=None):
     set_sync_cursor(end)
     return total,new,start,end
 
-async def sync_command(update,ctx):    uid=update.effective_user.id
+async def sync_command(update,ctx):
+    uid=update.effective_user.id
     if role(uid) not in ("owner","control"):
         return await update.message.reply_text("🔒 Доступ запрещён.")
     await update.message.reply_text("🔄 Начинаю загрузку записей Dahua за текущий месяц...\nЭто может занять некоторое время.")
