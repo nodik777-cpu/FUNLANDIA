@@ -397,8 +397,7 @@ async def access_cb(update,ctx):
     if role(q.from_user.id)!="owner":return await q.edit_message_text("🔒 Только владелец.")
     _,act,tid=q.data.split(":");tid=int(tid);c=db()
     if act=="deny":
-        c.execute("UPDATE access_requests SET status='denied' WHERE telegram_id=?",(tid,));c.commit();c.close();tg_send(tid,"❌ Доступ отклонён.");return await q.edit_message_text("❌ Отклонено.")
-    c.execute("INSERT OR REPLACE INTO user_roles VALUES(?,?)",(tid,act));c.execute("UPDATE access_requests SET status='approved',requested_role=? WHERE telegram_id=?",(act,tid));c.commit();c.close()
+        c.execute("UPDATE access_requests SET status='denied' WHERE telegram_id=?",(tid,));c.commit();c.close();tg_send(tid,"❌ Доступ отклонён.");return await q.edit_message_text("❌ Отклонено.")    c.execute("INSERT OR REPLACE INTO user_roles VALUES(?,?)",(tid,act));c.execute("UPDATE access_requests SET status='approved',requested_role=? WHERE telegram_id=?",(act,tid));c.commit();c.close()
     tg_send(tid,f"✅ Доступ подтверждён.\nРоль: {act}")
     await q.edit_message_text(f"✅ Доступ выдан: {act}")
 
@@ -782,35 +781,38 @@ async def canteen_report_menu(update,ctx):
 
 async def send_employee_report(message,start,end,title):
     c=db()
-    total=c.execute(
-        "SELECT COUNT(DISTINCT user_id) n, COUNT(*) passes "
-        "FROM attendance WHERE event_time>=? AND event_time<? "
-        "AND user_id IS NOT NULL AND user_id!=''",
-        (start,end)
-    ).fetchone()
     rows=c.execute(
-        "SELECT user_id,MAX(name) name,COUNT(*) passes,COUNT(DISTINCT substr(event_time,1,10)) days "
-        "FROM attendance WHERE event_time>=? AND event_time<? "
-        "AND user_id IS NOT NULL AND user_id!='' "
-        "GROUP BY user_id ORDER BY name",
+        "SELECT e.name name, "
+        "COUNT(DISTINCT substr(a.event_time,1,10)) days, "
+        "COUNT(a.rec_no) passes "
+        "FROM employees e "
+        "LEFT JOIN attendance a ON a.user_id=e.dahua_id "
+        "AND a.event_time>=? AND a.event_time<? "
+        "GROUP BY e.dahua_id,e.name "
+        "ORDER BY UPPER(e.name)",
         (start,end)
     ).fetchall()
     c.close()
 
-    text=[
-        title,"",
-        f"👥 Уникальных сотрудников: {total['n'] or 0}",
-        f"🚪 Всего проходов: {total['passes'] or 0}",
-        "",
-        "👤 СОТРУДНИКИ:"
-    ]
-    if rows:
-        for r in rows:
-            text.append(f"• {r['name']} — {r['days']} дн. / {r['passes']} проход.")
-    else:
-        text.append("Нет записей о проходах.")
+    total_employees=len(rows)
+    total_days=sum(int(r["days"] or 0) for r in rows)
+    total_passes=sum(int(r["passes"] or 0) for r in rows)
 
-    await message.reply_text("\\n".join(text))
+    text=[
+        title,
+        "",
+        f"👥 Сотрудников в списке: {total_employees}",
+        f"🚪 Всего проходов: {total_passes}",
+        "",
+        "👤 ПО ФАМИЛИИ / ФИО:"
+    ]
+    for i,r in enumerate(rows,1):
+        text.append(
+            f"{i:02d}. {r['name']}\n"
+            f"    📅 Дней: {r['days'] or 0}   🚪 Проходов: {r['passes'] or 0}"
+        )
+
+    await message.reply_text("\n".join(text))
 
 async def send_employee_month_report(message,year,month):
     import calendar
@@ -821,40 +823,57 @@ async def send_employee_month_report(message,year,month):
         end2=f"{year+1:04d}-01-01"
     else:
         end2=f"{year:04d}-{month+1:02d}-01"
-    c=db()
-    total=c.execute(
-        "SELECT COUNT(DISTINCT user_id) n, COUNT(*) passes "
-        "FROM attendance WHERE event_time>=? AND event_time<? "
-        "AND user_id IS NOT NULL AND user_id!=''",
-        (start1,end2)
-    ).fetchone()
-    a=c.execute(
-        "SELECT COUNT(DISTINCT user_id) n,COUNT(*) passes FROM attendance "
-        "WHERE event_time>=? AND event_time<? AND user_id IS NOT NULL AND user_id!=''",
-        (start1,end1)
-    ).fetchone()
-    b=c.execute(
-        "SELECT COUNT(DISTINCT user_id) n,COUNT(*) passes FROM attendance "
-        "WHERE event_time>=? AND event_time<? AND user_id IS NOT NULL AND user_id!=''",
-        (start2,end2)
-    ).fetchone()
-    c.close()
-    await message.reply_text("\\n".join([
-        f"👥 СОТРУДНИКИ — ВЕСЬ МЕСЯЦ {month:02d}.{year}",
-        "",
-        "📅 1–15 число",
-        f"👥 Уникальных сотрудников: {a['n'] or 0}",
-        f"🚪 Проходов: {a['passes'] or 0}",
-        "",
-        f"📅 16–{last_day} число",
-        f"👥 Уникальных сотрудников: {b['n'] or 0}",
-        f"🚪 Проходов: {b['passes'] or 0}",
+
+    def period_rows(start,end):
+        c=db()
+        rows=c.execute(
+            "SELECT e.name name, "
+            "COUNT(DISTINCT substr(a.event_time,1,10)) days, "
+            "COUNT(a.rec_no) passes "
+            "FROM employees e "
+            "LEFT JOIN attendance a ON a.user_id=e.dahua_id "
+            "AND a.event_time>=? AND a.event_time<? "
+            "GROUP BY e.dahua_id,e.name "
+            "ORDER BY UPPER(e.name)",
+            (start,end)
+        ).fetchall()
+        c.close()
+        return rows
+
+    a=period_rows(start1,end1)
+    b=period_rows(start2,end2)
+
+    def block(title,rows):
+        total_passes=sum(int(r["passes"] or 0) for r in rows)
+        lines=[
+            title,
+            f"👥 Сотрудников: {len(rows)}",
+            f"🚪 Всего проходов: {total_passes}",
+            ""
+        ]
+        for i,r in enumerate(rows,1):
+            lines.append(
+                f"{i:02d}. {r['name']} — 📅 {r['days'] or 0} дн. | 🚪 {r['passes'] or 0} проход."
+            )
+        return lines
+
+    text=block(
+        f"📅 1–15.{month:02d}.{year}",
+        a
+    ) + ["","────────────────"] + block(
+        f"📅 16–{last_day:02d}.{month:02d}.{year}",
+        b
+    )
+
+    total_passes=sum(int(r["passes"] or 0) for r in a)+sum(int(r["passes"] or 0) for r in b)
+    text += [
         "",
         "────────────────",
-        f"🗓 ИТОГО ЗА МЕСЯЦ",
-        f"👥 Уникальных сотрудников: {total['n'] or 0}",
-        f"🚪 Проходов: {total['passes'] or 0}"
-    ]))
+        "🗓 ИТОГО ЗА МЕСЯЦ",
+        f"👥 Сотрудников: {len(set([r['name'] for r in a]+[r['name'] for r in b]))}",
+        f"🚪 Всего проходов: {total_passes}"
+    ]
+    await message.reply_text("\n".join(text))
 
 async def send_canteen_report(message,start,end,title):
     c=db()
@@ -949,8 +968,12 @@ async def report_cb(update,ctx):
             f"{d.year:04d}-{d.month:02d}-01",f"{d.year:04d}-{d.month:02d}-16",
             f"👥 СОТРУДНИКИ — РАСЧЁТНЫЙ ПЕРИОД 1–15.{d.month:02d}.{d.year}")
     if kind=="employees_second":
+        if d.month==12:
+            report_end=f"{d.year+1:04d}-01-01"
+        else:
+            report_end=f"{d.year:04d}-{d.month+1:02d}-01"
         return await send_employee_report(q.message,
-            f"{d.year:04d}-{d.month:02d}-16",f"{(d+timedelta(days=1)):%Y-%m-%d}",
+            f"{d.year:04d}-{d.month:02d}-16",report_end,
             f"👥 СОТРУДНИКИ — РАСЧЁТНЫЙ ПЕРИОД 16–{last_day}.{d.month:02d}.{d.year}")
     if kind=="employees_month":
         return await send_employee_month_report(q.message,d.year,d.month)
@@ -1197,8 +1220,7 @@ async def control(update,ctx):
     text += ["","⚠️ Это прогноз по истории Dahua, а не утверждённый график."]
     await update.message.reply_text("\n".join(text))
 
-async def qr(update,ctx):
-    if role(update.effective_user.id) not in ("owner","employee"):return
+async def qr(update,ctx):    if role(update.effective_user.id) not in ("owner","employee"):return
     me=await ctx.bot.get_me();url=f"https://t.me/{me.username}?start=meal"
     img=qrcode.make(url);bio=BytesIO();bio.name="FUNLANDIA_QR_STOLOVAYA.png";img.save(bio,"PNG");bio.seek(0)
     await update.message.reply_photo(photo=bio,caption="📱 QR-код столовой\n\nСотрудник сканирует код → открывается Staff Bot → система проверяет его Telegram-доступ.")
