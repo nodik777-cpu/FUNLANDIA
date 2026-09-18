@@ -147,8 +147,7 @@ def ensure_dahua_user(user_id,name):
 
 def delete_dahua_user(user_id):
     uid=str(user_id)
-    # 1) Remove the face template.
-    face=requests.get(DAHUA_URL+"/cgi-bin/FaceInfoManager.cgi",
+    # 1) Remove the face template.    face=requests.get(DAHUA_URL+"/cgi-bin/FaceInfoManager.cgi",
         params={"action":"remove","UserID":uid},
         auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),verify=False,timeout=20)
     face_txt=face.text.strip()
@@ -252,7 +251,9 @@ def import_records(records):
     for x in records:
         uid=str(x.get("UserID","")).strip()
         if not uid: continue
-        if int(x.get("Status","1") or 1)!=1 or int(x.get("ErrorCode","0") or 0)!=0: continue
+        # Dahua ASI6213S-PW uses Status=0/ErrorCode=96 for many historical
+        # valid attendance events. We only require a real UserID here.
+        if not uid: continue
         rec=str(x.get("RecNo","")).strip() or hashlib.sha1(json.dumps(x,sort_keys=True).encode()).hexdigest()
         tm=parse_time(x.get("CreateTime"))
         typ=str(x.get("Type","")).strip()
@@ -297,8 +298,7 @@ def keyboard(r):
             ["👥 Управление сотрудниками","➕ Добавить сотрудника"],
             ["👥 Сейчас на работе","🍽 Столовая"],
             ["📊 Отчёты","📱 QR столовой"]
-        ],resize_keyboard=True)
-    if r=="control":
+        ],resize_keyboard=True)    if r=="control":
         return ReplyKeyboardMarkup([
             ["👥 Сейчас на работе"],
             ["🔴 Опоздали","⚠️ Ранее ушли"],
@@ -447,8 +447,7 @@ async def face_photo_handler(update,ctx):
             return await update.message.reply_text(
                 f"✅ Face ID зарегистрирован в Dahua.\n\n🆔 {e['internal_id']}\n👤 {e['name']}\n📞 {e['phone'] or '—'}\n🔢 Dahua ID: {e['dahua_id']}")
         except Exception as e:
-            log.exception("Owner face registration failed")
-            return await update.message.reply_text(f"❌ Не удалось зарегистрировать лицо в Dahua.\nТехнический ответ: {e}")
+            log.exception("Owner face registration failed")            return await update.message.reply_text(f"❌ Не удалось зарегистрировать лицо в Dahua.\nТехнический ответ: {e}")
     if role(uid) not in ("none","employee"): return
     try:
         fio=ctx.user_data["fio"]; phone=ctx.user_data["phone"]
@@ -647,8 +646,7 @@ async def create_control_approval(update,ctx,dahua_id):
     req_id=c.execute("SELECT last_insert_rowid()").fetchone()[0]
     c.commit(); c.close()
     if ADMIN_ID:
-        tg_send(ADMIN_ID,
-            f"🆕 НОВЫЙ СОТРУДНИК — подтверждение владельца\\n\\n"
+        tg_send(ADMIN_ID,            f"🆕 НОВЫЙ СОТРУДНИК — подтверждение владельца\\n\\n"
             f"👤 {e['name']}\\n🆔 {e['internal_id'] or '—'}\\n📞 {e['phone'] or '—'}\\n"
             f"🔢 Dahua ID: {e['dahua_id']}\\n\\n"
             f"Добавил: менеджер/контроль (Telegram ID {update.effective_user.id})",
@@ -998,198 +996,3 @@ async def control(update,ctx):
     predictions=predicted_days_off()
     text=[
         f"📊 СЕЙЧАС НА РАБОТЕ — {now():%d.%m.%Y}","",
-        f"😴 Предположительно сегодня отдыхают: {len(predictions)}",
-        f"👥 Всего активных сотрудников: {len(emps)}",
-        f"🟢 Пришли сегодня: {arrived}",
-        f"🔴 Ушли сегодня: {left}",
-        f"👥 Сейчас на работе: {at}",
-        f"1️⃣ Первая смена: {first_shift}",
-        f"2️⃣ Вторая смена: {second_shift}","",
-        f"🥗 Сейчас на обеде: {len(lunch_rows)}",
-        f"   1️⃣ Первая смена: {lunch_first}",
-        f"   2️⃣ Вторая смена: {lunch_second}","",
-        f"🌙 Сейчас на ужине: {len(dinner_rows)}",
-        f"   1️⃣ Первая смена: {dinner_first}",
-        f"   2️⃣ Вторая смена: {dinner_second}","",
-        f"🥗 Обед оформлен: {lunch_requested}",
-        f"🌙 Ужин оформлен: {dinner_requested}",
-        f"➕ Дополнительных талонов: {extra_count}",
-        f"⏰ Опоздали: {late}",
-        f"⚠️ Ранний уход: {early}"
-    ]
-    if at_lines:text += ["","👥 НА РАБОТЕ:"]+at_lines
-    if lunch_lines:text += ["","🥗 СЕЙЧАС НА ОБЕДЕ:"]+lunch_lines
-    if dinner_lines:text += ["","🌙 СЕЙЧАС НА УЖИНЕ:"]+dinner_lines
-    if predictions:
-        text += ["","😴 ПРЕДПОЛАГАЕМЫЕ ВЫХОДНЫЕ (по истории):"]
-        text += [f"• {name} — {absent} из {observed} таких дней без прохода" for name,absent,observed in predictions]
-    text += ["","⚠️ Это прогноз по истории Dahua, а не утверждённый график."]
-    await update.message.reply_text("\n".join(text))
-
-async def qr(update,ctx):
-    if role(update.effective_user.id) not in ("owner","employee"):return
-    me=await ctx.bot.get_me();url=f"https://t.me/{me.username}?start=meal"
-    img=qrcode.make(url);bio=BytesIO();bio.name="FUNLANDIA_QR_STOLOVAYA.png";img.save(bio,"PNG");bio.seek(0)
-    await update.message.reply_photo(photo=bio,caption="📱 QR-код столовой\n\nСотрудник сканирует код → открывается Staff Bot → система проверяет его Telegram-доступ.")
-
-async def text_handler(update,ctx):
-    t=(update.message.text or "").strip(); r=role(update.effective_user.id)
-    menu_buttons={
-        "🔐 Запросить доступ","📝 Регистрация","👥 Управление сотрудниками","➕ Добавить сотрудника",
-        "👥 Сейчас на работе","🍽 Столовая","📊 Отчёты","📱 QR столовой",
-        "🔴 Опоздали","⚠️ Ранее ушли","🍽 Сейчас на обеде",
-        "🍽 Сегодня","📅 1–15 число","📅 16–конец месяца","🗓 Весь месяц",
-        "👤 Мои записи","📋 Мой отчёт","🍽 Питание","➕ За счёт сотрудника","ℹ️ Помощь"
-    }
-    if t=="↩️ Отмена":
-        ctx.user_data.clear()
-        return await update.message.reply_text("↩️ Операция отменена.",reply_markup=keyboard(r))
-    if t in menu_buttons and (ctx.user_data.get("add_fio") or ctx.user_data.get("add_phone") or
-                               ctx.user_data.get("reg_fio") or ctx.user_data.get("reg_phone")):
-        ctx.user_data.clear()
-    if r in ("owner","control") and (ctx.user_data.get("add_fio") or ctx.user_data.get("add_phone")):
-        if await owner_add_input(update,ctx): return
-    if r in ("none","employee") and (ctx.user_data.get("reg_fio") or ctx.user_data.get("reg_phone")):
-        return await registration_input(update,ctx)
-    if t=="🔐 Запросить доступ": return await access_request(update,ctx)
-    if t=="📝 Регистрация": return await registration_start(update,ctx)
-    if t=="👥 Управление сотрудниками": return await employees(update,ctx)
-    if t=="➕ Добавить сотрудника": return await owner_add_start(update,ctx)
-    if t in ("👥 Сейчас на работе","🔴 Опоздали","⚠️ Ранее ушли","🍽 Сейчас на обеде"):
-        return await control(update,ctx)
-    if t=="📊 Отчёты": return await report_menu(update,ctx)
-    if t=="🍽 Столовая": return await canteen(update,ctx)
-    if t=="🍽 Питание": return await meal_menu(update,ctx)
-    if t=="➕ За счёт сотрудника": return await extra_meal_request(update,ctx)
-    if t=="🍽 Сегодня":
-        if r not in ("owner","canteen"): return
-        return await canteen(update,ctx)
-    if t=="📅 1–15 число":
-        if r not in ("owner","canteen"): return
-        d=now()
-        return await send_canteen_report(update.message,
-            f"{d.year:04d}-{d.month:02d}-01",f"{d.year:04d}-{d.month:02d}-15",
-            f"🍽 СТОЛОВАЯ — РАСЧЁТНЫЙ ПЕРИОД 1–15.{d.month:02d}.{d.year}")
-    if t=="📅 16–конец месяца":
-        if r not in ("owner","canteen"): return
-        d=now(); import calendar
-        last_day=calendar.monthrange(d.year,d.month)[1]
-        return await send_canteen_report(update.message,
-            f"{d.year:04d}-{d.month:02d}-16",f"{d.year:04d}-{d.month:02d}-{last_day:02d}",
-            f"🍽 СТОЛОВАЯ — РАСЧЁТНЫЙ ПЕРИОД 16–{last_day}.{d.month:02d}.{d.year}")
-    if t=="🗓 Весь месяц":
-        if r not in ("owner","canteen"): return
-        d=now()
-        return await send_canteen_month_report(update.message,d.year,d.month)
-    if t=="📱 QR столовой": return await qr(update,ctx)
-    if t=="ℹ️ Помощь":
-        return await update.message.reply_text(
-            "ℹ️ ПОМОЩЬ\n\n"
-            "🍽 Питание — обычный талон по норме смены.\n"
-            "➕ За счёт сотрудника — дополнительное питание.\n"
-            "📱 QR столовой — единый QR-код для входа в Staff Bot.\n"
-            "↩️ Отмена — отменяет незавершённую операцию."
-        )
-    if t=="👤 Мои записи":
-        c=db(); e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(update.effective_user.id,)).fetchone(); c.close()
-        if not e: return await update.message.reply_text("Нет привязанного сотрудника.")
-        rows=last_events(e["dahua_id"],now().date().isoformat())
-        out=[f"👤 {e['name']}",f"🆔 {e['internal_id'] or '—'}",f"📞 {e['phone'] or '—'}"]
-        out += [f"{'🟢' if x['event_type']=='Entry' else '🔴'} {datetime.fromisoformat(x['event_time']):%H:%M}" for x in rows]
-        return await update.message.reply_text("\n".join(out))
-    if t=="📋 Мой отчёт":
-        c=db(); e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(update.effective_user.id,)).fetchone()
-        if not e: c.close(); return await update.message.reply_text("Нет привязанного сотрудника.")
-        rows=c.execute("SELECT meal_type,COUNT(*) n,SUM(extra) extra FROM meals WHERE dahua_id=? AND meal_date=? GROUP BY meal_type",(e["dahua_id"],now().date().isoformat())).fetchall(); c.close()
-        return await update.message.reply_text("\n".join([f"📋 Мой отчёт — {now():%d.%m.%Y}"]+[f"{x['meal_type']}: {x['n']} (доп.: {x['extra'] or 0})" for x in rows]))
-    await update.message.reply_text("Используйте кнопки меню.",reply_markup=keyboard(r))
-
-async def error(update,ctx):log.exception("Telegram error: %s",ctx.error)
-
-def month_range(year=None, month=None):
-    d=now()
-    year=year or d.year
-    month=month or d.month
-    start=datetime(year,month,1,tzinfo=TZ)
-    if month==12:
-        end=datetime(year+1,1,1,tzinfo=TZ)
-    else:
-        end=datetime(year,month+1,1,tzinfo=TZ)
-    return start,end
-
-def sync_month(year=None, month=None):
-    start,end=month_range(year,month)
-    # Do not request future records when syncing the current month.
-    if end>now():
-        end=now()
-    records=get_records(start,end)
-    new=import_records(records)
-    return len(records),len(new),start,end
-
-async def sync_command(update,ctx):
-    uid=update.effective_user.id
-    if role(uid) not in ("owner","control"):
-        return await update.message.reply_text("🔒 Доступ запрещён.")
-    await update.message.reply_text("🔄 Начинаю загрузку записей Dahua за текущий месяц...\nЭто может занять некоторое время.")
-    try:
-        total,new,start,end=sync_month()
-        await update.message.reply_text(
-            f"✅ Синхронизация завершена.\n\n"
-            f"📅 Период: {start:%d.%m.%Y} — {end:%d.%m.%Y %H:%M}\n"
-            f"📥 Получено из Dahua: {total}\n"
-            f"🆕 Добавлено новых: {new}\n"
-            f"💾 Дубликаты автоматически пропущены."
-        )
-    except Exception as e:
-        log.exception("Manual month sync failed")
-        await update.message.reply_text(f"❌ Ошибка синхронизации: {e}")
-
-async def poller(app):
-    # При каждом запуске бот сначала загружает весь текущий календарный месяц.
-    try:
-        total,new,start,end=sync_month()
-        log.info("Initial month sync: period=%s..%s received=%s new=%s",
-                 start.isoformat(),end.isoformat(),total,new)
-    except Exception as e:
-        log.exception("Initial month sync failed: %s",e)
-
-    # Затем регулярно проверяем небольшой перекрывающийся интервал,
-    # чтобы новые проходы попадали в базу практически сразу.
-    while True:
-        try:
-            end=now()
-            start=end-timedelta(minutes=5)
-            new=import_records(get_records(start,end))
-            if new:log.info("Imported %s new Dahua records",len(new))
-        except Exception as e:
-            log.warning("Dahua poll failed: %s",e)
-        await asyncio.sleep(POLL)
-
-async def post_init(app):
-    asyncio.create_task(poller(app))
-
-def main():
-    if not BOT_TOKEN:raise RuntimeError("BOT_TOKEN is not set")
-    init_db()
-    log.info("Starting Funlandia Staff Bot; Dahua=%s; poll=%ss", DAHUA_URL, POLL)
-    app=Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-    app.add_handler(CommandHandler("start",start))
-    app.add_handler(CommandHandler("access",access_request))
-    app.add_handler(CommandHandler("sync",sync_command))
-    app.add_handler(CallbackQueryHandler(access_cb,pattern=r"^access:"))
-    app.add_handler(CallbackQueryHandler(report_cb,pattern=r"^report:"))
-    app.add_handler(CallbackQueryHandler(reg_cb,pattern=r"^reg:"))
-    app.add_handler(CallbackQueryHandler(emp_cb,pattern=r"^emp:"))
-    app.add_handler(CallbackQueryHandler(meal_cb,pattern=r"^meal:"))
-    app.add_handler(CallbackQueryHandler(return_meal_cb,pattern=r"^mealreturn:"))
-    app.add_handler(CallbackQueryHandler(serve_cb,pattern=r"^serve:"))
-    app.add_handler(CallbackQueryHandler(owner_face_cb,pattern=r"^ownerface:"))
-    app.add_handler(CallbackQueryHandler(control_face_cb,pattern=r"^controlface:"))
-    app.add_handler(CallbackQueryHandler(newemp_cb,pattern=r"^newemp:"))
-    app.add_handler(CallbackQueryHandler(face_cb,pattern=r"^face:"))
-    app.add_handler(MessageHandler(filters.PHOTO,face_photo_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,text_handler))
-    app.add_error_handler(error)
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__=="__main__":main()
