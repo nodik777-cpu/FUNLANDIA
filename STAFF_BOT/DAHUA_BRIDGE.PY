@@ -145,7 +145,7 @@ def delete_dahua_user(user_id):
     r.raise_for_status()
     rows={}
     for line in r.text.replace("\r","").splitlines():
-        m=re.match(r"records\\[(\\d+)\\]\\.([^=]+)=(.*)$",line)
+        m=re.match(r"records\[(\d+)\]\.([^=]+)=(.*)$",line)
         if m: rows.setdefault(m.group(1),{})[m.group(2)]=m.group(3)
     for row in rows.values():
         recno=str(row.get("RecNo","")).strip()
