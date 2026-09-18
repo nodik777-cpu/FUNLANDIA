@@ -142,7 +142,7 @@ def ensure_dahua_user(user_id,name):
             f"{finder.text.strip()[:300]}"
         )
 
-    if re.search(r"records\\[\\d+\\]\\.UserID="+re.escape(uid)+r"(?:\\r?\\n|$)",finder.text):
+    if re.search(r"records\[\d+\]\.UserID="+re.escape(uid)+r"(?:\r?\n|$)",finder.text):
         return True
 
     params={
@@ -162,7 +162,7 @@ def ensure_dahua_user(user_id,name):
     txt=r.text.strip()
     if r.ok and (
         txt.upper()=="OK" or
-        re.search(r"(?:RecNo|recno)\\s*=\\s*\\d+",txt)
+        re.search(r"(?:RecNo|recno)\s*=\s*\d+",txt)
     ):
         return True
 
@@ -179,7 +179,7 @@ def ensure_dahua_user(user_id,name):
         auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
         verify=False,timeout=20)
     if finder2.ok and re.search(
-        r"records\\[\\d+\\]\\.UserID="+re.escape(uid)+r"(?:\\r?\\n|$)",
+        r"records\[\d+\]\.UserID="+re.escape(uid)+r"(?:\r?\n|$)",
         finder2.text
     ):
         return True
