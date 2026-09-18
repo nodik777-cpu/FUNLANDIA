@@ -788,15 +788,17 @@ async def canteen_report_menu(update,ctx):
 def employee_report_rows(start,end):
     c=db()
     rows=c.execute(
-        "SELECT user_id,name,days,passes FROM ("
+        "SELECT user_id,name,days FROM ("
         "SELECT a.user_id,MAX(a.name) name,"
-        "COUNT(DISTINCT substr(a.event_time,1,10)) days,COUNT(a.rec_no) passes "
+        "COUNT(DISTINCT substr(a.event_time,1,10)) days "
         "FROM attendance a WHERE a.event_time>=? AND a.event_time<? "
+        "AND a.event_type='Entry' "
         "AND a.user_id IS NOT NULL AND a.user_id!='' GROUP BY a.user_id "
         "UNION ALL "
-        "SELECT e.dahua_id,e.name,0,0 FROM employees e "
+        "SELECT e.dahua_id,e.name,0 FROM employees e "
         "WHERE e.active=1 AND NOT EXISTS (SELECT 1 FROM attendance a "
-        "WHERE a.user_id=e.dahua_id AND a.event_time>=? AND a.event_time<?)"
+        "WHERE a.user_id=e.dahua_id AND a.event_time>=? AND a.event_time<? "
+        "AND a.event_type='Entry')"
         ") ORDER BY UPPER(name)",
         (start,end,start,end)
     ).fetchall()
@@ -807,11 +809,11 @@ def create_employee_excel(start,end,title):
     from openpyxl import Workbook
     rows=employee_report_rows(start,end)
     wb=Workbook(); ws=wb.active; ws.title="Сотрудники"
-    ws.append(["№","Фамилия / ФИО","Дней","Проходов"])
+    ws.append(["№","Фамилия / ФИО","Дней"])
     for i,r in enumerate(rows,1):
-        ws.append([i,r["name"],int(r["days"] or 0),int(r["passes"] or 0)])
-    ws.append([]); ws.append(["","ИТОГО",len(rows),sum(int(r["passes"] or 0) for r in rows)])
-    for col,width in {"A":7,"B":38,"C":12,"D":14}.items(): ws.column_dimensions[col].width=width
+        ws.append([i,r["name"],int(r["days"] or 0)])
+    ws.append([]); ws.append(["","ИТОГО",sum(int(r["days"] or 0) for r in rows)])
+    for col,width in {"A":7,"B":38,"C":12}.items(): ws.column_dimensions[col].width=width
     filepath=os.path.join(tempfile.gettempdir(),"EMPLOYEES_REPORT.xlsx"); wb.save(filepath); return filepath
 
 async def send_employee_excel(message,start,end):
@@ -829,11 +831,11 @@ async def send_employee_month_excel(message,year,month):
     end2=f"{year+1:04d}-01-01" if month==12 else f"{year:04d}-{month+1:02d}-01"
     from openpyxl import Workbook
     wb=Workbook(); ws=wb.active; ws.title="Сотрудники"
-    ws.append(["Период","№","Фамилия / ФИО","Дней","Проходов"])
+    ws.append(["Период","№","Фамилия / ФИО","Дней"])
     for period,start,end in [("1–15",start1,end1),(f"16–{last_day}",start2,end2)]:
         for i,r in enumerate(employee_report_rows(start,end),1):
-            ws.append([period,i,r["name"],int(r["days"] or 0),int(r["passes"] or 0)])
-    for col,width in {"A":12,"B":7,"C":38,"D":12,"E":14}.items(): ws.column_dimensions[col].width=width
+            ws.append([period,i,r["name"],int(r["days"] or 0)])
+    for col,width in {"A":12,"B":7,"C":38,"D":12}.items(): ws.column_dimensions[col].width=width
     filepath=os.path.join(tempfile.gettempdir(),f"EMPLOYEES_MONTH_{month:02d}_{year}.xlsx"); wb.save(filepath)
     with open(filepath,"rb") as f:
         await message.reply_document(document=f,filename=os.path.basename(filepath),caption=f"📊 Excel-выгрузка сотрудников за {month:02d}.{year}")
@@ -844,8 +846,7 @@ async def send_employee_report(message,start,end,title):
     c=db()
     rows=c.execute(
         "SELECT e.name name, "
-        "COUNT(DISTINCT substr(a.event_time,1,10)) days, "
-        "COUNT(a.rec_no) passes "
+        "COUNT(DISTINCT CASE WHEN a.event_type='Entry' THEN substr(a.event_time,1,10) END) days "
         "FROM employees e "
         "LEFT JOIN attendance a ON a.user_id=e.dahua_id "
         "AND a.event_time>=? AND a.event_time<? "
@@ -857,19 +858,18 @@ async def send_employee_report(message,start,end,title):
 
     total_employees=len(rows)
     total_days=sum(int(r["days"] or 0) for r in rows)
-    total_passes=sum(int(r["passes"] or 0) for r in rows)
     text=[
         title,
         "",
         f"👥 Сотрудников в списке: {total_employees}",
-        f"🚪 Всего проходов: {total_passes}",
+        f"📅 Всего дней присутствия: {sum(int(r["days"] or 0) for r in rows)}",
         "",
         "👤 ПО ФАМИЛИИ / ФИО:"
     ]
     for i,r in enumerate(rows,1):
         text.append(
             f"{i:02d}. {r['name']}\n"
-            f"    📅 Дней: {r['days'] or 0}   🚪 Проходов: {r['passes'] or 0}"
+            f"    📅 Дней: {r['days'] or 0}"
         )
 
     await message.reply_text("\n".join(text),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📥 Выгрузить в Excel",callback_data=f"report:employees_excel:{start}:{end}")]]))
@@ -888,8 +888,7 @@ async def send_employee_month_report(message,year,month):
         c=db()
         rows=c.execute(
             "SELECT e.name name, "
-            "COUNT(DISTINCT substr(a.event_time,1,10)) days, "
-            "COUNT(a.rec_no) passes "
+            "COUNT(DISTINCT CASE WHEN a.event_type='Entry' THEN substr(a.event_time,1,10) END) days "
             "FROM employees e "
             "LEFT JOIN attendance a ON a.user_id=e.dahua_id "
             "AND a.event_time>=? AND a.event_time<? "
@@ -904,16 +903,15 @@ async def send_employee_month_report(message,year,month):
     b=period_rows(start2,end2)
 
     def block(title,rows):
-        total_passes=sum(int(r["passes"] or 0) for r in rows)
         lines=[
             title,
             f"👥 Сотрудников: {len(rows)}",
-            f"🚪 Всего проходов: {total_passes}",
+            f"📅 Всего дней присутствия: {sum(int(r["days"] or 0) for r in rows)}",
             ""
         ]
         for i,r in enumerate(rows,1):
             lines.append(
-                f"{i:02d}. {r['name']} — 📅 {r['days'] or 0} дн. | 🚪 {r['passes'] or 0} проход."
+                f"{i:02d}. {r['name']} — 📅 {r['days'] or 0} дн."
             )
         return lines
 
@@ -925,13 +923,13 @@ async def send_employee_month_report(message,year,month):
         b
     )
 
-    total_passes=sum(int(r["passes"] or 0) for r in a)+sum(int(r["passes"] or 0) for r in b)
+    total_days=sum(int(r["days"] or 0) for r in a)+sum(int(r["days"] or 0) for r in b)
     text += [
         "",
         "────────────────",
         "🗓 ИТОГО ЗА МЕСЯЦ",
         f"👥 Сотрудников: {len(set([r['name'] for r in a]+[r['name'] for r in b]))}",
-        f"🚪 Всего проходов: {total_passes}"
+        f"📅 Всего дней присутствия: {total_days}"
     ]
     await message.reply_text("\n".join(text),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📥 Выгрузить весь месяц в Excel",callback_data=f"report:employees_excel_month:{year}:{month}")]]))
 
@@ -1189,27 +1187,6 @@ async def reports(update,ctx):
     for r in rows:text.append(f"{r['meal_type']}: {r['n']} шт. (доп.: {r['extra'] or 0})")
     await update.message.reply_text("\n".join(text))
 
-def predicted_days_off(date=None,weeks=8):
-    """Estimate recurring weekly days off from attendance history.
-    A day is shown only when at least 4 comparable weeks exist and absence rate is >= 70%.
-    This is a statistical hint, not a confirmed schedule.
-    """
-    d=(date or now().date())
-    start=d-timedelta(weeks=weeks)
-    c=db()
-    emps=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall()
-    c.close()
-    result=[]
-    for e in emps:
-        observed=absent=0
-        for w in range(1,weeks+1):
-            day=d-timedelta(weeks=w)
-            rows=last_events(e["dahua_id"],day.isoformat())
-            observed+=1
-            if not rows: absent+=1
-        if observed>=4 and absent/observed>=0.70:
-            result.append((e["name"],absent,observed))
-    return result
 async def control(update,ctx):
     if role(update.effective_user.id) not in ("owner","control"): return
     date=now().date().isoformat()
@@ -1260,7 +1237,6 @@ async def control(update,ctx):
         elif sh=="2-я": dinner_second+=1
         dinner_lines.append(f"🌙 {r['name']} — {sh}")
 
-    predictions=predicted_days_off()
     text=[
         f"📊 СЕЙЧАС НА РАБОТЕ — {now():%d.%m.%Y}","",
         "📌 ОБЩАЯ СТАТИСТИКА:",
@@ -1285,10 +1261,6 @@ async def control(update,ctx):
     if at_lines: text += ["","👥 СЕЙЧАС НА РАБОТЕ:"] + at_lines
     if lunch_lines: text += ["","🥗 СЕЙЧАС НА ОБЕДЕ:"] + lunch_lines
     if dinner_lines: text += ["","🌙 СЕЙЧАС НА УЖИНЕ:"] + dinner_lines
-    if predictions:
-        text += ["","😴 ПРЕДПОЛАГАЕМЫЕ ВЫХОДНЫЕ ПО ИСТОРИИ:",f"Всего: {len(predictions)}"]
-        text += [f"• {name} — без прохода {absent} из {observed} аналогичных дней" for name,absent,observed in predictions]
-        text += ["⚠️ Это прогноз по истории Dahua, а не утверждённый график."]
     await update.message.reply_text("\n".join(text))
 
 async def qr(update,ctx):
