@@ -298,7 +298,6 @@ def get_records(start,end):
             break
 
         offset += page_size
-
     return list(all_rows.values())
 def import_records(records):
     c=db(); new=[]
@@ -597,8 +596,7 @@ async def emp_cb(update,ctx):
         f"👤 {e['name']}\n"
         f"🆔 {e['internal_id'] or '—'}\n\n"
         f"✅ Face ID удалён из Dahua\n"
-        f"✅ Доступ к столовой удалён\n"
-        f"✅ Сотрудник удалён из текущей базы\n"
+        f"✅ Доступ к столовой удалён\n"        f"✅ Сотрудник удалён из текущей базы\n"
         f"📊 История прихода/ухода сохранена\n"
         f"🍽 История питания сохранена\n\n"
         f"Для повторного трудоустройства нужна новая регистрация.")
@@ -897,8 +895,7 @@ async def meal_cb(update,ctx):
                 "❌ Это питание не входит в норму вашей смены.\n"
                 "Для дополнительного питания используйте отдельную кнопку.")
         c=db()
-        already=c.execute(
-            "SELECT id FROM meals WHERE dahua_id=? AND meal_date=? AND meal_type=? AND extra=0",
+        already=c.execute(            "SELECT id FROM meals WHERE dahua_id=? AND meal_date=? AND meal_type=? AND extra=0",
             (e["dahua_id"],date,kind)).fetchone()
         c.close()
         if already:return await q.edit_message_text("ℹ️ Обычный талон на это питание уже оформлен сегодня.")
@@ -1197,8 +1194,7 @@ def sync_month(year=None, month=None):
     set_sync_cursor(end)
     return total,new,start,end
 
-async def sync_command(update,ctx):
-    uid=update.effective_user.id
+async def sync_command(update,ctx):    uid=update.effective_user.id
     if role(uid) not in ("owner","control"):
         return await update.message.reply_text("🔒 Доступ запрещён.")
     await update.message.reply_text("🔄 Начинаю загрузку записей Dahua за текущий месяц...\nЭто может занять некоторое время.")
@@ -1242,7 +1238,7 @@ async def poller(app):
             start=(cursor-timedelta(minutes=15)) if cursor else (end-timedelta(minutes=30))
             total,new=sync_window(start,end)
             set_sync_cursor(end)
-            if new:log.info("Imported %s new Dahua records",len(new))
+            if new:log.info("Imported %s new Dahua records",new)
 
             # Every 6 hours do a full current-month reconciliation.
             if end-last_full_sync>=timedelta(hours=6):
