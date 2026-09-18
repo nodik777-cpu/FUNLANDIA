@@ -303,9 +303,9 @@ def keyboard(r):
         ],resize_keyboard=True)
     if r=="canteen":
         return ReplyKeyboardMarkup([
-            ["🍽 Сегодня питание","📅 Неделя"],
-            ["🗓 Месяц","📅 1–15"],
-            ["📅 16–конец месяца","📱 Проверить QR"]
+            ["🍽 Сегодня"],
+            ["📅 1–15 число","📅 16–конец месяца"],
+            ["🗓 Весь месяц"]
         ],resize_keyboard=True)
     if r=="employee":
         return ReplyKeyboardMarkup([
@@ -316,6 +316,7 @@ def keyboard(r):
     return ReplyKeyboardMarkup([["📝 Регистрация"],["🔐 Запросить доступ"]],resize_keyboard=True)
 
 async def start(update,ctx):
+    ctx.user_data.clear()
     r=role(update.effective_user.id)
     if ctx.args and ctx.args[0]=="meal":
         if r=="employee":return await meal_menu(update,ctx)
@@ -347,7 +348,9 @@ async def access_cb(update,ctx):
 async def registration_start(update,ctx):
     if role(update.effective_user.id) not in ("none","employee"): return
     ctx.user_data.clear(); ctx.user_data["reg_fio"]=True
-    await update.message.reply_text("📝 Регистрация сотрудника\n\nШаг 1 из 3\nВведите ФИО сотрудника:")
+    await update.message.reply_text(
+        "📝 Регистрация сотрудника\n\nШаг 1 из 3\nВведите ФИО сотрудника:",
+        reply_markup=ReplyKeyboardMarkup([["↩️ Отмена"]],resize_keyboard=True))
 
 async def registration_input(update,ctx):
     if role(update.effective_user.id) not in ("none","employee"): return
@@ -355,7 +358,7 @@ async def registration_input(update,ctx):
     if ctx.user_data.get("reg_fio"):
         if len(text)<3: return await update.message.reply_text("❌ Введите корректное ФИО.")
         ctx.user_data["fio"]=text; ctx.user_data.pop("reg_fio",None); ctx.user_data["reg_phone"]=True
-        return await update.message.reply_text("Шаг 2 из 3\nВведите номер телефона:")
+        return await update.message.reply_text("Шаг 2 из 3\nВведите номер телефона:",reply_markup=ReplyKeyboardMarkup([["↩️ Отмена"]],resize_keyboard=True))
     if ctx.user_data.get("reg_phone"):
         phone=re.sub(r"[^0-9+() -]","",text)
         if len(re.sub(r"\D","",phone))<9: return await update.message.reply_text("❌ Неверный номер телефона.")
@@ -364,7 +367,8 @@ async def registration_input(update,ctx):
             f"Шаг 3 из 3\n\n👤 ФИО: {ctx.user_data['fio']}\n📞 Телефон: {phone}\n\nЗарегистрируйте лицо:",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📷 Зарегистрировать Face ID",callback_data="face:start")],
-                [InlineKeyboardButton("📱 Отправить фото через Telegram",callback_data="face:telegram")]
+                [InlineKeyboardButton("📱 Отправить фото через Telegram",callback_data="face:telegram")],
+                [InlineKeyboardButton("↩️ Отмена",callback_data="face:cancel")]
             ]))
 
 async def owner_face_cb(update,ctx):
@@ -375,12 +379,13 @@ async def owner_face_cb(update,ctx):
     if len(parts)!=3:
         return await q.edit_message_text("❌ Неверная команда.")
     action,dahua_id=parts[1],parts[2]
-    c=db(); e=c.execute("SELECT * FROM employees WHERE dahua_id=? AND active=1",(dahua_id,)).fetchone(); c.close()
+    c=db(); e=c.execute("SELECT * FROM employees WHERE dahua_id=?",(dahua_id,)).fetchone(); c.close()
     if not e:
         return await q.edit_message_text("❌ Сотрудник не найден.")
     if action=="start":
         ok=try_dahua_capture(dahua_id,e["name"])
         if ok:
+            c=db(); c.execute("UPDATE employees SET active=1 WHERE dahua_id=?",(dahua_id,)); c.commit(); c.close()
             return await q.edit_message_text("📷 Команда регистрации отправлена на Dahua. Встаньте перед терминалом и дождитесь захвата лица.")
         return await q.edit_message_text(
             "📷 Прямой запуск камеры для этой прошивки пока не подтверждён.",
@@ -392,6 +397,9 @@ async def owner_face_cb(update,ctx):
 
 async def face_cb(update,ctx):
     q=update.callback_query; await q.answer()
+    if q.data=="face:cancel":
+        ctx.user_data.clear()
+        return await q.edit_message_text("↩️ Регистрация отменена.",reply_markup=keyboard(role(q.from_user.id)))
     if role(q.from_user.id) not in ("none","employee"): return
     if not ctx.user_data.get("fio") or not ctx.user_data.get("phone"):
         return await q.edit_message_text("❌ Сначала заполните ФИО и телефон.")
@@ -416,6 +424,7 @@ async def face_photo_handler(update,ctx):
             f=await update.message.photo[-1].get_file()
             bio=BytesIO(); await f.download_to_memory(out=bio)
             save_registration_photo(str(owner_target),e["name"],bio.getvalue())
+            c=db(); c.execute("UPDATE employees SET active=1 WHERE dahua_id=?",(str(owner_target),)); c.commit(); c.close()
             ctx.user_data.clear()
             return await update.message.reply_text(
                 f"✅ Face ID зарегистрирован в Dahua.\n\n🆔 {e['internal_id']}\n👤 {e['name']}\n📞 {e['phone'] or '—'}\n🔢 Dahua ID: {e['dahua_id']}")
@@ -526,20 +535,22 @@ async def emp_cb(update,ctx):
 async def owner_add_start(update,ctx):
     if role(update.effective_user.id)!="owner": return
     ctx.user_data.clear(); ctx.user_data["owner_fio"]=True
-    await update.message.reply_text("➕ Добавление сотрудника\n\nВведите ФИО:")
+    await update.message.reply_text(
+        "➕ Добавление сотрудника\n\nВведите ФИО:",
+        reply_markup=ReplyKeyboardMarkup([["↩️ Отмена"]],resize_keyboard=True))
 
 async def owner_add_input(update,ctx):
     if role(update.effective_user.id)!="owner": return False
     text=(update.message.text or "").strip()
     if ctx.user_data.get("owner_fio"):
         ctx.user_data["owner_name"]=text; ctx.user_data.pop("owner_fio",None); ctx.user_data["owner_phone"]=True
-        await update.message.reply_text("Введите номер телефона:"); return True
+        await update.message.reply_text("Введите номер телефона:",reply_markup=ReplyKeyboardMarkup([["↩️ Отмена"]],resize_keyboard=True)); return True
     if ctx.user_data.get("owner_phone"):
         phone=re.sub(r"[^0-9+() -]","",text)
         if len(re.sub(r"\D","",phone))<9: await update.message.reply_text("❌ Неверный номер."); return True
         fio=ctx.user_data["owner_name"]; internal_id=next_internal_id(); dahua_id=next_dahua_user_id()
         c=db(); c.execute("INSERT OR REPLACE INTO employees(dahua_id,name,active,telegram_id,role,created_at,internal_id,phone) VALUES(?,?,?,?,?,?,?,?)",
-                           (dahua_id,fio,1,None,"employee",now().isoformat(),internal_id,phone)); c.commit(); c.close()
+                           (dahua_id,fio,0,None,"employee",now().isoformat(),internal_id,phone)); c.commit(); c.close()
         ctx.user_data.clear()
         mk=InlineKeyboardMarkup([
             [InlineKeyboardButton("📷 Зарегистрировать Face ID",callback_data=f"ownerface:start:{dahua_id}")],
@@ -547,7 +558,7 @@ async def owner_add_input(update,ctx):
         ])
         await update.message.reply_text(
             f"✅ Сотрудник создан.\n\n🆔 {internal_id}\n👤 {fio}\n📞 {phone}\n🔢 Dahua ID: {dahua_id}\n\n"
-            "Теперь зарегистрируйте лицо сотрудника:",
+            "Черновик сотрудника создан. После успешной регистрации лица сотрудник будет активирован:",
             reply_markup=mk)
         return True
     return False
@@ -555,51 +566,97 @@ async def owner_add_input(update,ctx):
 async def report_menu(update,ctx):
     if role(update.effective_user.id)!="owner": return
     await update.message.reply_text("📊 Отчёты:",reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("📅 1–15",callback_data="report:half")],
-        [InlineKeyboardButton("📅 1–конец месяца",callback_data="report:full")],
-        [InlineKeyboardButton("🗓 Месячный отчёт",callback_data="report:month")]
+        [InlineKeyboardButton("📅 1–15 число",callback_data="report:half")],
+        [InlineKeyboardButton("📅 16–конец месяца",callback_data="report:second")],
+        [InlineKeyboardButton("🗓 Весь месяц",callback_data="report:month")]
     ]))
 
+async def send_canteen_report(message,start,end,title):
+    c=db()
+    rows=c.execute(
+        "SELECT meal_type,COUNT(*) n,SUM(extra) extra,"
+        "SUM(CASE WHEN status='served' THEN 1 ELSE 0 END) served,"
+        "SUM(CASE WHEN status='requested' THEN 1 ELSE 0 END) pending "
+        "FROM meals WHERE meal_date BETWEEN ? AND ? GROUP BY meal_type ORDER BY meal_type",
+        (start,end)).fetchall()
+    total=c.execute(
+        "SELECT COUNT(*) n,SUM(extra) extra,"
+        "SUM(CASE WHEN status='served' THEN 1 ELSE 0 END) served,"
+        "SUM(CASE WHEN status='requested' THEN 1 ELSE 0 END) pending "
+        "FROM meals WHERE meal_date BETWEEN ? AND ?",
+        (start,end)).fetchone()
+    c.close()
+    text=[title,"",
+          f"👥 Всего талонов: {total['n'] or 0}",
+          f"✅ Выдано: {total['served'] or 0}",
+          f"⏳ Ожидают выдачи: {total['pending'] or 0}",
+          f"➕ Дополнительных: {total['extra'] or 0}",""]
+    for row in rows:
+        icon="🥗" if row["meal_type"]=="Обед" else "🌙" if row["meal_type"]=="Ужин" else "➕"
+        text.append(f"{icon} {row['meal_type']}: {row['n']}")
+    await message.reply_text("\n".join(text))
+
+async def send_canteen_month_report(message,year,month):
+    import calendar
+    last_day=calendar.monthrange(year,month)[1]
+    start1=f"{year:04d}-{month:02d}-01"; end1=f"{year:04d}-{month:02d}-15"
+    start2=f"{year:04d}-{month:02d}-16"; end2=f"{year:04d}-{month:02d}-{last_day:02d}"
+    def stats(start,end):
+        c=db()
+        row=c.execute(
+            "SELECT COUNT(*) n,SUM(extra) extra,"
+            "SUM(CASE WHEN status='served' THEN 1 ELSE 0 END) served,"
+            "SUM(CASE WHEN status='requested' THEN 1 ELSE 0 END) pending "
+            "FROM meals WHERE meal_date BETWEEN ? AND ?",
+            (start,end)).fetchone()
+        c.close()
+        return row
+    a=stats(start1,end1); b=stats(start2,end2)
+    total=(a["n"] or 0)+(b["n"] or 0)
+    served=(a["served"] or 0)+(b["served"] or 0)
+    pending=(a["pending"] or 0)+(b["pending"] or 0)
+    extra=(a["extra"] or 0)+(b["extra"] or 0)
+    text=[
+        f"🗓 СТОЛОВАЯ — ВЕСЬ МЕСЯЦ {month:02d}.{year}",
+        "",
+        "📅 1–15 число",
+        f"👥 Талонов: {a['n'] or 0}",
+        f"✅ Выдано: {a['served'] or 0}",
+        f"⏳ Ожидают: {a['pending'] or 0}",
+        f"➕ Дополнительных: {a['extra'] or 0}",
+        "",
+        f"📅 16–{last_day} число",
+        f"👥 Талонов: {b['n'] or 0}",
+        f"✅ Выдано: {b['served'] or 0}",
+        f"⏳ Ожидают: {b['pending'] or 0}",
+        f"➕ Дополнительных: {b['extra'] or 0}",
+        "",
+        "────────────────",
+        f"🗓 ИТОГО ЗА МЕСЯЦ: {total}",
+        f"✅ Выдано: {served}",
+        f"⏳ Ожидают: {pending}",
+        f"➕ Дополнительных: {extra}"
+    ]
+    await message.reply_text("\n".join(text))
+
 async def report_cb(update,ctx):
-    q=update.callback_query;await q.answer()
-    if role(q.from_user.id)!="owner":return
+    q=update.callback_query; await q.answer()
+    if role(q.from_user.id)!="owner": return
     kind=q.data.split(":")[1]
     d=now()
     import calendar
     last_day=calendar.monthrange(d.year,d.month)[1]
     if kind=="half":
-        start_day,end_day=1,15
-        title="📅 ОТЧЁТ 1–15"
-    elif kind=="full":
-        start_day,end_day=1,last_day
-        title="📅 ОТЧЁТ 1–КОНЕЦ МЕСЯЦА"
-    elif kind=="month":
-        start_day,end_day=1,last_day
-        title="🗓 МЕСЯЧНЫЙ ОТЧЁТ"
-    else:
-        return await q.edit_message_text("❌ Неизвестный период.")
-    start=f"{d.year:04d}-{d.month:02d}-{start_day:02d}"
-    end=f"{d.year:04d}-{d.month:02d}-{end_day:02d}"
-    c=db()
-    meals=c.execute("SELECT meal_type,COUNT(*) n,SUM(extra) extra FROM meals WHERE meal_date BETWEEN ? AND ? GROUP BY meal_type",(start,end)).fetchall()
-    total=c.execute("SELECT COUNT(*) n,SUM(extra) extra FROM meals WHERE meal_date BETWEEN ? AND ?",(start,end)).fetchone()
-    c.close()
-    text=[
-        title,
-        f"Период: {start_day:02d}.{d.month:02d}.{d.year}–{end_day:02d}.{d.month:02d}.{d.year}",
-        "",
-        f"🍽 Всего питания: {total['n'] or 0}",
-        f"⚠️ Дополнительных: {total['extra'] or 0}",
-        f"💰 Сумма удержания: {(total['extra'] or 0)*EXTRA_MEAL_COST:,} сум"
-    ]
-    for r in meals:
-        text.append(f"{r['meal_type']}: {r['n']} (доп.: {r['extra'] or 0})")
-    await q.edit_message_text("\n".join(text))
-
-def meal_entitlement(uid,kind):
-    date=now().date().isoformat();sh=shift_for(uid,date)
-    if kind=="Обед":return sh in ("1-я","Нестандартная")
-    return sh in ("1-я","2-я","Нестандартная")
+        return await send_canteen_report(q.message,
+            f"{d.year:04d}-{d.month:02d}-01",f"{d.year:04d}-{d.month:02d}-15",
+            f"🍽 СТОЛОВАЯ — РАСЧЁТНЫЙ ПЕРИОД 1–15.{d.month:02d}.{d.year}")
+    if kind=="second":
+        return await send_canteen_report(q.message,
+            f"{d.year:04d}-{d.month:02d}-16",f"{d.year:04d}-{d.month:02d}-{last_day:02d}",
+            f"🍽 СТОЛОВАЯ — РАСЧЁТНЫЙ ПЕРИОД 16–{last_day}.{d.month:02d}.{d.year}")
+    if kind=="month":
+        return await send_canteen_month_report(q.message,d.year,d.month)
+    return await q.edit_message_text("❌ Неизвестный отчёт.")
 
 async def meal_menu(update,ctx):
     tg=update.effective_user.id
@@ -714,7 +771,10 @@ async def serve_cb(update,ctx):
     if not r:
         return await q.edit_message_text("❌ Заявка не найдена.")
     if r["status"]=="served" and employee and employee["telegram_id"]:
-        tg_send(employee["telegram_id"],f"🍽 {r['meal_type']} выдан.\nПосле еды нажмите «Вернулся с {r['meal_type'].lower()}» в разделе «🍽 Питание».")
+        if r["extra"]:
+            tg_send(employee["telegram_id"],"🍽 Дополнительное питание выдано.\nЭто питание оплачивается сотрудником.")
+        else:
+            tg_send(employee["telegram_id"],f"🍽 {r['meal_type']} выдан.\nПосле еды нажмите «Вернулся с {r['meal_type'].lower()}» в разделе «🍽 Питание».")
     await q.edit_message_text(f"✅ Выдано: {r['name']} — {r['meal_type']}")
 
 async def return_meal_cb(update,ctx):
@@ -737,12 +797,16 @@ async def control(update,ctx):
     if role(update.effective_user.id) not in ("owner","control"): return
     date=now().date().isoformat()
     c=db();emps=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall();c.close()
-    at=late=early=first_shift=second_shift=0
+    at=late=early=first_shift=second_shift=arrived=left=0
     at_lines=[];lunch_lines=[];dinner_lines=[]
     for e in emps:
         rows=last_events(e["dahua_id"],date)
         if not rows: continue
         sh=shift_for(e["dahua_id"],date)
+        if any(x["event_type"]=="Entry" for x in rows):
+            arrived+=1
+        if rows[-1]["event_type"]=="Exit":
+            left+=1
         if rows[-1]["event_type"]=="Entry":
             at+=1
             if sh in ("1-я","Нестандартная"): first_shift+=1
@@ -775,6 +839,9 @@ async def control(update,ctx):
         dinner_lines.append(f"🌙 {r['name']} — {sh}")
     text=[
         f"📊 СЕЙЧАС НА РАБОТЕ — {now():%d.%m.%Y}","",
+        f"👥 Всего активных сотрудников: {len(emps)}",
+        f"🟢 Пришли сегодня: {arrived}",
+        f"🔴 Ушли сегодня: {left}",
         f"👥 Сейчас на работе: {at}",
         f"1️⃣ Первая смена: {first_shift}",
         f"2️⃣ Вторая смена: {second_shift}","",
@@ -796,29 +863,69 @@ async def control(update,ctx):
     await update.message.reply_text("\n".join(text))
 
 async def qr(update,ctx):
-    if role(update.effective_user.id)!="owner":return
+    if role(update.effective_user.id) not in ("owner","employee"):return
     me=await ctx.bot.get_me();url=f"https://t.me/{me.username}?start=meal"
     img=qrcode.make(url);bio=BytesIO();bio.name="FUNLANDIA_QR_STOLOVAYA.png";img.save(bio,"PNG");bio.seek(0)
     await update.message.reply_photo(photo=bio,caption="📱 QR-код столовой\n\nСотрудник сканирует код → открывается Staff Bot → система проверяет его Telegram-доступ.")
 
 async def text_handler(update,ctx):
     t=(update.message.text or "").strip(); r=role(update.effective_user.id)
+    menu_buttons={
+        "🔐 Запросить доступ","📝 Регистрация","👥 Управление сотрудниками","➕ Добавить сотрудника",
+        "👥 Сейчас на работе","🍽 Столовая","📊 Отчёты","📱 QR столовой",
+        "🔴 Опоздали","⚠️ Ранее ушли","🍽 Сейчас на обеде",
+        "🍽 Сегодня","📅 1–15 число","📅 16–конец месяца","🗓 Весь месяц",
+        "👤 Мои записи","📋 Мой отчёт","🍽 Питание","➕ За счёт сотрудника","ℹ️ Помощь"
+    }
+    if t=="↩️ Отмена":
+        ctx.user_data.clear()
+        return await update.message.reply_text("↩️ Операция отменена.",reply_markup=keyboard(r))
+    if t in menu_buttons and (ctx.user_data.get("owner_fio") or ctx.user_data.get("owner_phone") or
+                               ctx.user_data.get("reg_fio") or ctx.user_data.get("reg_phone")):
+        ctx.user_data.clear()
     if r=="owner" and (ctx.user_data.get("owner_fio") or ctx.user_data.get("owner_phone")):
         if await owner_add_input(update,ctx): return
     if r in ("none","employee") and (ctx.user_data.get("reg_fio") or ctx.user_data.get("reg_phone")):
         return await registration_input(update,ctx)
     if t=="🔐 Запросить доступ": return await access_request(update,ctx)
-    if t in ("📝 Регистрация","📝 Регистрация для питания"): return await registration_start(update,ctx)
-    if t in ("👥 Управление сотрудниками","👥 Сотрудники"): return await employees(update,ctx)
+    if t=="📝 Регистрация": return await registration_start(update,ctx)
+    if t=="👥 Управление сотрудниками": return await employees(update,ctx)
     if t=="➕ Добавить сотрудника": return await owner_add_start(update,ctx)
-    if t in ("👥 Сейчас на работе","📊 Контроль","🔴 Опоздали","⚠️ Ранее ушли","🍽 Сейчас на обеде"):
+    if t in ("👥 Сейчас на работе","🔴 Опоздали","⚠️ Ранее ушли","🍽 Сейчас на обеде"):
         return await control(update,ctx)
     if t=="📊 Отчёты": return await report_menu(update,ctx)
     if t=="🍽 Столовая": return await canteen(update,ctx)
     if t=="🍽 Питание": return await meal_menu(update,ctx)
     if t=="➕ За счёт сотрудника": return await extra_meal_request(update,ctx)
-    if t in ("🍽 Сегодня питание","📊 Сегодня питание"): return await reports(update,ctx)
-    if t in ("📱 QR столовой","📱 Проверить QR"): return await qr(update,ctx)
+    if t=="🍽 Сегодня":
+        if r not in ("owner","canteen"): return
+        return await canteen(update,ctx)
+    if t=="📅 1–15 число":
+        if r not in ("owner","canteen"): return
+        d=now()
+        return await send_canteen_report(update.message,
+            f"{d.year:04d}-{d.month:02d}-01",f"{d.year:04d}-{d.month:02d}-15",
+            f"🍽 СТОЛОВАЯ — РАСЧЁТНЫЙ ПЕРИОД 1–15.{d.month:02d}.{d.year}")
+    if t=="📅 16–конец месяца":
+        if r not in ("owner","canteen"): return
+        d=now(); import calendar
+        last_day=calendar.monthrange(d.year,d.month)[1]
+        return await send_canteen_report(update.message,
+            f"{d.year:04d}-{d.month:02d}-16",f"{d.year:04d}-{d.month:02d}-{last_day:02d}",
+            f"🍽 СТОЛОВАЯ — РАСЧЁТНЫЙ ПЕРИОД 16–{last_day}.{d.month:02d}.{d.year}")
+    if t=="🗓 Весь месяц":
+        if r not in ("owner","canteen"): return
+        d=now()
+        return await send_canteen_month_report(update.message,d.year,d.month)
+    if t=="📱 QR столовой": return await qr(update,ctx)
+    if t=="ℹ️ Помощь":
+        return await update.message.reply_text(
+            "ℹ️ ПОМОЩЬ\n\n"
+            "🍽 Питание — обычный талон по норме смены.\n"
+            "➕ За счёт сотрудника — дополнительное питание.\n"
+            "📱 QR столовой — единый QR-код для входа в Staff Bot.\n"
+            "↩️ Отмена — отменяет незавершённую операцию."
+        )
     if t=="👤 Мои записи":
         c=db(); e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(update.effective_user.id,)).fetchone(); c.close()
         if not e: return await update.message.reply_text("Нет привязанного сотрудника.")
