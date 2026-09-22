@@ -29,6 +29,8 @@ LUNCH_START=int(os.getenv("LUNCH_START","10:00").split(":")[0])*60+int(os.getenv
 LUNCH_END=int(os.getenv("LUNCH_END","15:00").split(":")[0])*60+int(os.getenv("LUNCH_END","15:00").split(":")[1])
 DINNER_START=int(os.getenv("DINNER_START","17:00").split(":")[0])*60+int(os.getenv("DINNER_START","17:00").split(":")[1])
 DINNER_END=int(os.getenv("DINNER_END","22:00").split(":")[0])*60+int(os.getenv("DINNER_END","22:00").split(":")[1])
+FIRST_SHIFT_MEAL_CUTOFF=int(os.getenv("FIRST_SHIFT_MEAL_CUTOFF","15:00").split(":")[0])*60+int(os.getenv("FIRST_SHIFT_MEAL_CUTOFF","15:00").split(":")[1])
+SECOND_SHIFT_MEAL_CUTOFF=int(os.getenv("SECOND_SHIFT_MEAL_CUTOFF","17:00").split(":")[0])*60+int(os.getenv("SECOND_SHIFT_MEAL_CUTOFF","17:00").split(":")[1])
 
 def now(): return datetime.now(TZ)
 def db():
@@ -71,6 +73,11 @@ def init_db():
       id INTEGER PRIMARY KEY AUTOINCREMENT,dahua_id TEXT NOT NULL,name TEXT NOT NULL,
       phone TEXT,created_by INTEGER NOT NULL,created_at TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending')""")
+    c.execute("""CREATE TABLE IF NOT EXISTS meal_approval_requests(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,dahua_id TEXT NOT NULL,name TEXT NOT NULL,
+      telegram_id INTEGER NOT NULL,meal_type TEXT NOT NULL,reason TEXT NOT NULL,
+      requested_at TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',
+      approved_by INTEGER,approved_at TEXT)""")
     c.execute("""CREATE TABLE IF NOT EXISTS sync_state(
       key TEXT PRIMARY KEY,value TEXT NOT NULL)""")
     for col, typ in (("internal_id","TEXT"),("phone","TEXT")):
@@ -193,7 +200,7 @@ class DahuaNetSDK:
         out.pFailCode=ctypes.cast(fail,ctypes.POINTER(ctypes.c_int))
 
         ok=self.sdk.OperateAccessUserService(
-            lid, EM_A_NET_EM_ACCESS_CTL_USER_SERVICE.INSERT, inp, out, 15000)
+            lid, 0, inp, out, 15000)
         if not ok:
             raise RuntimeError(f"NetSDK create user failed: {self._last_error()}")
         if fail[0] != 0:
@@ -225,7 +232,7 @@ class DahuaNetSDK:
         out.pFailCode=ctypes.cast(fail,ctypes.POINTER(ctypes.c_int))
 
         ok=self.sdk.OperateAccessFaceService(
-            lid, EM_A_NET_EM_ACCESS_CTL_FACE_SERVICE.INSERT, inp, out, 15000)
+            lid, 0, inp, out, 15000)
         if not ok:
             raise RuntimeError(f"NetSDK add face failed: {self._last_error()}")
         if fail[0] != 0:
@@ -246,7 +253,7 @@ class DahuaNetSDK:
         out.pFailCode=ctypes.cast(fail,ctypes.POINTER(ctypes.c_int))
 
         ok=self.sdk.OperateAccessUserService(
-            lid, EM_A_NET_EM_ACCESS_CTL_USER_SERVICE.REMOVE, inp, out, 15000)
+            lid, 2, inp, out, 15000)
         if not ok:
             raise RuntimeError(f"NetSDK delete user failed: {self._last_error()}")
         if fail[0] != 0:
@@ -481,15 +488,14 @@ def keyboard(r):
     if r=="owner":
         return ReplyKeyboardMarkup([
             ["👥 Управление сотрудниками","➕ Добавить сотрудника"],
-            ["👥 Сейчас на работе","🍽 Столовая"],
+            ["📊 Контроль","🍽 Столовая"],
             ["📊 Отчёты","📱 QR столовой"]
         ],resize_keyboard=True)
     if r=="control":
         return ReplyKeyboardMarkup([
-            ["👥 Сейчас на работе"],
-            ["🔴 Опоздали","⚠️ Ранее ушли"],
+            ["👥 Сейчас на работе","🔴 Опоздали"],
             ["🍽 Сейчас на обеде"],
-            ["➕ Добавить сотрудника"]
+            ["➕ Зарегистрировать сотрудника"]
         ],resize_keyboard=True)
     if r=="canteen":
         return ReplyKeyboardMarkup([
@@ -994,6 +1000,7 @@ async def send_employee_report(message,start,end,title):
         "FROM employees e "
         "LEFT JOIN attendance a ON a.user_id=e.dahua_id "
         "AND a.event_time>=? AND a.event_time<? "
+        "WHERE e.active=1 "
         "GROUP BY e.dahua_id,e.name "
         "ORDER BY UPPER(e.name)",
         (start,end)
@@ -1279,19 +1286,65 @@ async def report_cb(update,ctx):
         return await send_canteen_month_report(q.message,d.year,d.month)
     return await q.edit_message_text("❌ Неизвестный отчёт.")
 
-def meal_entitlement(uid,kind):
-    """Норма питания:
-    1-я смена — обед + ужин.
-    2-я смена — только ужин.
-    Дополнительное питание оформляется отдельно и оплачивается сотрудником.
-    """
-    date=now().date().isoformat()
+def _entry_before(uid,date,cutoff_minutes):
+    for r in last_events(uid,date):
+        if r["event_type"]!="Entry": continue
+        t=datetime.fromisoformat(r["event_time"])
+        if t.hour*60+t.minute<=cutoff_minutes: return t
+    return None
+
+def meal_access(uid,kind,date=None):
+    date=date or now().date().isoformat()
+    rows=last_events(uid,date)
+    if not rows: return False,"Вы сегодня не были на работе."
     sh=shift_for(uid,date)
     if kind=="Обед":
-        return sh in ("1-я","Нестандартная")
+        if sh not in ("1-я","Нестандартная"): return False,"Обед положен только первой смене."
+        if not _entry_before(uid,date,FIRST_SHIFT_MEAL_CUTOFF):
+            return False,"Вы не прибыли на первую смену до контрольного времени."
+        return True,""
     if kind=="Ужин":
-        return sh in ("1-я","2-я","Нестандартная")
-    return False
+        if sh not in ("1-я","2-я","Нестандартная"): return False,"Для вашей смены ужин не предусмотрен."
+        cutoff=FIRST_SHIFT_MEAL_CUTOFF if sh in ("1-я","Нестандартная") else SECOND_SHIFT_MEAL_CUTOFF
+        if not _entry_before(uid,date,cutoff): return False,"Вы не были на работе до контрольного времени."
+        return True,""
+    return False,"Неизвестный вид питания."
+
+def meal_entitlement(uid,kind):
+    ok,_=meal_access(uid,kind); return ok
+
+async def request_paid_meal_for_employee(e,ctx_message=None):
+    date=now().date().isoformat()
+    mins=now().hour*60+now().minute
+    if not (LUNCH_START<=mins<=LUNCH_END or DINNER_START<=mins<=DINNER_END):
+        if ctx_message: await ctx_message.reply_text("⏰ Сейчас столовая вне времени питания.")
+        return False
+    c=db()
+    pending=c.execute("SELECT id FROM meal_approval_requests WHERE telegram_id=? AND status='pending' AND date(requested_at)=?",(e["telegram_id"],date)).fetchone()
+    if pending:
+        c.close()
+        if ctx_message: await ctx_message.reply_text("⏳ Запрос на питание за свой счёт уже отправлен владельцу.")
+        return False
+    c.execute("INSERT INTO meal_approval_requests(dahua_id,name,telegram_id,meal_type,reason,requested_at,status) VALUES(?,?,?,?,?,?,?)",
+              (e["dahua_id"],e["name"],e["telegram_id"],"Дополнительное","Питание за свой счёт",now().isoformat(),"pending"))
+    req_id=c.execute("SELECT last_insert_rowid()").fetchone()[0]; c.commit();c.close()
+    if ADMIN_ID:
+        tg_send(ADMIN_ID,
+            f"🍽 ЗАПРОС НА ПИТАНИЕ ЗА СВОЙ СЧЁТ
+
+👤 {e['name']}
+📅 {now():%d.%m.%Y}
+🔢 Dahua ID: {e['dahua_id']}
+⏳ Требуется подтверждение владельца.",
+            {"inline_keyboard":[[
+                {"text":"✅ Разрешить","callback_data":f"mealapproval:ok:{req_id}"},
+                {"text":"❌ Отклонить","callback_data":f"mealapproval:no:{req_id}"}
+            ]]})
+    if ctx_message:
+        await ctx_message.reply_text("⏳ Запрос отправлен владельцу.
+
+Питание за свой счёт будет доступно только после подтверждения владельца.")
+    return True
 
 async def meal_menu(update,ctx):
     tg=update.effective_user.id
@@ -1299,141 +1352,146 @@ async def meal_menu(update,ctx):
     if not e:return await update.message.reply_text("🔒 Вы не зарегистрированы для питания.")
     date=now().date().isoformat()
     shift=shift_for(e["dahua_id"],date)
-    c=db()
-    rows=c.execute("SELECT meal_type,status,extra FROM meals WHERE dahua_id=? AND meal_date=? ORDER BY id",(e["dahua_id"],date)).fetchall()
-    c.close()
-    normal={r["meal_type"]:r for r in rows if not r["extra"]}
-    extra_count=sum(1 for r in rows if r["extra"])
     buttons=[]
-
-    # Нормальное питание показываем только по норме смены:
-    # 1-я смена — обед и ужин; 2-я смена — только ужин.
-    allowed=[k for k in ("Обед","Ужин") if meal_entitlement(e["dahua_id"],k)]
-    for kind in allowed:
-        if kind in normal:
-            r=normal[kind]
-            if r["status"]=="served":
-                buttons.append([InlineKeyboardButton(
-                    f"🔙 Вернулся с {kind.lower()}",
-                    callback_data=f"mealreturn:{kind}")])
+    status_lines=[f"🍽 ПИТАНИЕ — {now():%d.%m.%Y}",f"👤 {e['name']}",f"🔄 Смена: {shift}",""]
+    for kind in ("Обед","Ужин"):
+        if not meal_entitlement(e["dahua_id"],kind): continue
+        ok,reason=meal_access(e["dahua_id"],kind,date)
+        if ok:
+            c=db()
+            row=c.execute("SELECT * FROM meals WHERE dahua_id=? AND meal_date=? AND meal_type=? AND extra=0 ORDER BY id DESC LIMIT 1",(e["dahua_id"],date,kind)).fetchone()
+            c.close()
+            if row and row["status"]=="served":
+                buttons.append([InlineKeyboardButton(f"🔙 Закончил {kind.lower()}",callback_data=f"mealreturn:{kind}")])
+                status_lines.append(f"🟢 {kind}: выдан")
+            elif row:
+                status_lines.append(f"⏳ {kind}: талон оформлен")
             else:
-                buttons.append([InlineKeyboardButton(
-                    f"{'🥗' if kind=='Обед' else '🌙'} {kind}: {r['status']}",
-                    callback_data="meal:noop:0")])
+                buttons.append([InlineKeyboardButton(f"{'🥗' if kind=='Обед' else '🌙'} Получить {kind.lower()}",callback_data=f"meal:{kind}:0")])
+                status_lines.append(f"🟢 {kind}: доступен")
         else:
-            buttons.append([InlineKeyboardButton(
-                f"{'🥗' if kind=='Обед' else '🌙'} {kind}",
-                callback_data=f"meal:{kind}:0")])
-
-    buttons.append([InlineKeyboardButton(
-        f"➕ Дополнительное питание — за счёт сотрудника ({extra_count})",
-        callback_data="meal:Дополнительное:1")])
-
-    await update.message.reply_text(
-        f"🍽 Питание\n👤 {e['name']}\n🔄 Смена: {shift}\n"
-        f"➕ Дополнительных талонов сегодня: {extra_count}",
-        reply_markup=InlineKeyboardMarkup(buttons))
+            status_lines.append(f"🔒 {kind}: {reason}")
+    buttons.append([InlineKeyboardButton("➕ Питание за свой счёт",callback_data="meal:Дополнительное:1")])
+    status_lines += ["","➕ Дополнительное питание — только после подтверждения владельца."]
+    await update.message.reply_text("
+".join(status_lines),reply_markup=InlineKeyboardMarkup(buttons))
 
 async def meal_cb(update,ctx):
     q=update.callback_query;await q.answer();tg=q.from_user.id
     c=db();e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(tg,)).fetchone();c.close()
     if not e:return await q.edit_message_text("🔒 Доступ запрещён.")
     _,kind,extra=q.data.split(":",2)
-    if kind=="noop":return await q.answer("Нет доступного обычного питания.",show_alert=False)
-
     date=now().date().isoformat()
+    if int(extra):
+        return await request_paid_meal_for_employee(e,q.message)
     mins=now().hour*60+now().minute
     if not (LUNCH_START<=mins<=LUNCH_END or DINNER_START<=mins<=DINNER_END):
         return await q.edit_message_text("⏰ Сейчас столовая вне времени питания.")
+    ok,reason=meal_access(e["dahua_id"],kind,date)
+    if not ok:
+        return await q.edit_message_text(f"🔒 {kind} недоступен.
 
-    extra=int(extra)
-    if not extra:
-        # Защита от обхода кнопки: норма всегда проверяется на сервере.
-        if not meal_entitlement(e["dahua_id"],kind):
-            return await q.edit_message_text(
-                "❌ Это питание не входит в норму вашей смены.\n"
-                "Для дополнительного питания используйте отдельную кнопку.")
-        c=db()
-        already=c.execute(
-            "SELECT id FROM meals WHERE dahua_id=? AND meal_date=? AND meal_type=? AND extra=0",
-            (e["dahua_id"],date,kind)).fetchone()
-        c.close()
-        if already:return await q.edit_message_text("ℹ️ Обычный талон на это питание уже оформлен сегодня.")
+{reason}
 
+Если необходимо питание за свой счёт, используйте кнопку «➕ Питание за свой счёт».")
     c=db()
-    c.execute(
-        "INSERT INTO meals(dahua_id,name,meal_type,meal_date,requested_at,extra) VALUES(?,?,?,?,?,?)",
-        (e["dahua_id"],e["name"],kind if not extra else "Дополнительное",date,now().isoformat(),extra))
+    already=c.execute("SELECT id FROM meals WHERE dahua_id=? AND meal_date=? AND meal_type=? AND extra=0",(e["dahua_id"],date,kind)).fetchone()
+    if already:
+        c.close()
+        return await q.edit_message_text("ℹ️ Обычный талон на это питание уже оформлен сегодня.")
+    c.execute("INSERT INTO meals(dahua_id,name,meal_type,meal_date,requested_at,extra) VALUES(?,?,?,?,?,0)",(e["dahua_id"],e["name"],kind,date,now().isoformat()))
     c.commit();c.close()
+    await q.edit_message_text(f"✅ {kind} разрешён.
 
-    label="Дополнительное питание — за счёт сотрудника" if extra else kind
-    await q.edit_message_text(
-        f"✅ Талон оформлен.\n\n{label}\n"
-        f"{'⚠️ Оплачивается сотрудником.' if extra else 'Это питание по норме вашей смены.'}\n"
-        "Ожидайте выдачу в столовой.")
-    notify_canteen(e["name"],kind,extra)
+🍽 Информация отправлена в столовую.
+Покажите экран сотруднику столовой.")
+    notify_canteen(e["name"],kind,0)
 
 async def extra_meal_request(update,ctx):
     tg=update.effective_user.id
     c=db();e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(tg,)).fetchone();c.close()
     if not e:return await update.message.reply_text("🔒 Вы не зарегистрированы как сотрудник.")
-    mins=now().hour*60+now().minute
-    if not (LUNCH_START<=mins<=LUNCH_END or DINNER_START<=mins<=DINNER_END):
-        return await update.message.reply_text("⏰ Сейчас столовая вне времени питания.")
-    date=now().date().isoformat()
-    c=db()
-    c.execute("INSERT INTO meals(dahua_id,name,meal_type,meal_date,requested_at,extra) VALUES(?,?,?,?,?,1)",
-              (e["dahua_id"],e["name"],"Дополнительное",date,now().isoformat()))
-    c.commit();c.close()
-    await update.message.reply_text(
-        "✅ Дополнительный талон оформлен.\n\n"
-        "➕ Дополнительное питание — за счёт сотрудника.\n"
-        "Талон отправлен в столовую. Ожидайте выдачу.")
-    notify_canteen(e["name"],"Дополнительное",1)
+    return await request_paid_meal_for_employee(e,update.message)
 
 def notify_canteen(name,kind,extra):
     c=db();rows=c.execute("SELECT telegram_id FROM user_roles WHERE role='canteen'").fetchall();c.close()
-    label="➕ Дополнительное питание — за счёт сотрудника" if extra else kind
-    for r in rows:tg_send(r["telegram_id"],f"🍽 НОВЫЙ ТАЛОН\n👤 {name}\n{label}")
+    label="➕ Питание за свой счёт" if extra else kind
+    for r in rows:tg_send(r["telegram_id"],f"🍽 НОВЫЙ ТАЛОН
+👤 {name}
+{label}")
 
 async def canteen(update,ctx):
     if role(update.effective_user.id) not in ("owner","canteen"):return
-    date=now().date().isoformat();c=db();rows=c.execute("SELECT * FROM meals WHERE meal_date=? ORDER BY status='served',requested_at",(date,)).fetchall();c.close()
-    if not rows:return await update.message.reply_text("Сегодня заявок на питание нет.")
+    date=now().date().isoformat()
+    c=db();rows=c.execute("SELECT * FROM meals WHERE meal_date=? AND status IN ('requested','served') ORDER BY CASE WHEN status='requested' THEN 0 ELSE 1 END,requested_at",(date,)).fetchall();c.close()
+    if not rows:return await update.message.reply_text("🍽 Сегодня заявок на питание нет.")
     for r in rows:
-        if r["status"]=="returned":continue
-        mk={"inline_keyboard":[[{"text":"🍽 Выдано","callback_data":f"serve:{r['id']}"}]]} if r["status"]=="requested" else None
-        await update.message.reply_text(f"{'🥗' if r['meal_type']=='Обед' else '🍽'} {r['name']}\n{r['meal_type']}{' ⚠️ ДОП.' if r['extra'] else ''}\nСтатус: {r['status']}",reply_markup=mk)
+        if r["status"]=="served":
+            text=f"{'🥗' if r['meal_type']=='Обед' else '🌙'} {r['name']}
+{r['meal_type']}{' ⚠️ ЗА СВОЙ СЧЁТ' if r['extra'] else ''}
+Статус: выдано"
+            await update.message.reply_text(text)
+            continue
+        mk={"inline_keyboard":[[{"text":"🍽 Выдать питание","callback_data":f"serve:{r['id']}"}]]}
+        await update.message.reply_text(
+            f"{'🥗' if r['meal_type']=='Обед' else '🌙'} {r['name']}
+"
+            f"{r['meal_type']}{' ⚠️ ЗА СВОЙ СЧЁТ' if r['extra'] else ''}
+"
+            "Статус: ожидает выдачи",reply_markup=InlineKeyboardMarkup(mk["inline_keyboard"].copy()))
 
 async def serve_cb(update,ctx):
     q=update.callback_query;await q.answer()
-    if role(q.from_user.id) not in ("owner","canteen"):
-        return
-    try:
-        mid=int(q.data.split(":")[1])
-    except (ValueError,IndexError):
-        return await q.edit_message_text("❌ Неверная заявка.")
+    if role(q.from_user.id) not in ("owner","canteen"): return
+    try: mid=int(q.data.split(":")[1])
+    except (ValueError,IndexError): return await q.edit_message_text("❌ Неверная заявка.")
     c=db()
     c.execute("UPDATE meals SET served_at=?,status='served' WHERE id=? AND status='requested'",(now().isoformat(),mid))
     r=c.execute("SELECT * FROM meals WHERE id=?",(mid,)).fetchone()
     employee=c.execute("SELECT telegram_id FROM employees WHERE dahua_id=? AND active=1",(r["dahua_id"],)).fetchone() if r else None
     c.commit();c.close()
-    if not r:
-        return await q.edit_message_text("❌ Заявка не найдена.")
+    if not r:return await q.edit_message_text("❌ Заявка не найдена.")
     if r["status"]=="served" and employee and employee["telegram_id"]:
-        if r["extra"]:
-            tg_send(employee["telegram_id"],"🍽 Дополнительное питание выдано.\nЭто питание оплачивается сотрудником.")
-        else:
-            tg_send(employee["telegram_id"],f"🍽 {r['meal_type']} выдан.\nПосле еды нажмите «Вернулся с {r['meal_type'].lower()}» в разделе «🍽 Питание».")
+        tg_send(employee["telegram_id"],f"🍽 {r['meal_type']} выдан.
+{'⚠️ Питание за свой счёт.' if r['extra'] else 'Питание по норме смены.'}
+После еды нажмите «🍽 Питание» и отметьте завершение.")
     await q.edit_message_text(f"✅ Выдано: {r['name']} — {r['meal_type']}")
 
 async def return_meal_cb(update,ctx):
     q=update.callback_query;await q.answer();tg=q.from_user.id
     c=db();e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(tg,)).fetchone()
     if not e:c.close();return
-    kind=q.data.split(":")[1];date=now().date().isoformat()
+    kind=q.data.split(":",1)[1];date=now().date().isoformat()
     c.execute("UPDATE meals SET returned_at=?,status='returned' WHERE dahua_id=? AND meal_type=? AND meal_date=? AND status='served'",(now().isoformat(),e["dahua_id"],kind,date));c.commit();c.close()
-    await q.edit_message_text(f"🔙 Возврат с {kind.lower()} отмечен.")
+    await q.edit_message_text(f"✅ {kind} завершён. Вы снова на работе.")
+
+async def mealapproval_cb(update,ctx):
+    q=update.callback_query;await q.answer()
+    if role(q.from_user.id)!="owner":
+        return await q.edit_message_text("🔒 Только владелец может подтвердить питание.")
+    parts=q.data.split(":")
+    if len(parts)!=3:return await q.edit_message_text("❌ Неверный запрос.")
+    action,req_id=parts[1],int(parts[2])
+    c=db()
+    req=c.execute("SELECT * FROM meal_approval_requests WHERE id=? AND status='pending'",(req_id,)).fetchone()
+    if not req:
+        c.close();return await q.edit_message_text("ℹ️ Запрос уже обработан.")
+    e=c.execute("SELECT * FROM employees WHERE dahua_id=? AND active=1",(req["dahua_id"],)).fetchone()
+    if action=="ok" and e:
+        c.execute("INSERT INTO meals(dahua_id,name,meal_type,meal_date,requested_at,status,extra) VALUES(?,?,?,?,?,?,1)",(req["dahua_id"],req["name"],"Дополнительное",now().date().isoformat(),req["requested_at"],"requested"))
+        c.execute("UPDATE meal_approval_requests SET status='approved',approved_by=?,approved_at=? WHERE id=?",(q.from_user.id,now().isoformat(),req_id))
+        c.commit();c.close()
+        notify_canteen(req["name"],"Дополнительное",1)
+        tg_send(req["telegram_id"],"✅ Владелец разрешил питание за свой счёт.
+🍽 Информация отправлена в столовую.")
+        return await q.edit_message_text(f"✅ Питание разрешено.
+👤 {req['name']}
+➕ За свой счёт.")
+    c.execute("UPDATE meal_approval_requests SET status='denied',approved_by=?,approved_at=? WHERE id=?",(q.from_user.id,now().isoformat(),req_id))
+    c.commit();c.close()
+    tg_send(req["telegram_id"],"❌ Владелец не разрешил питание за свой счёт.")
+    return await q.edit_message_text(f"❌ Питание отклонено.
+👤 {req['name']}")
 
 async def reports(update,ctx):
     if role(update.effective_user.id)!="owner":return
@@ -1443,81 +1501,71 @@ async def reports(update,ctx):
     for r in rows:text.append(f"{r['meal_type']}: {r['n']} шт. (доп.: {r['extra'] or 0})")
     await update.message.reply_text("\n".join(text))
 
-async def control(update,ctx):
+async def control_current(update,ctx):
     if role(update.effective_user.id) not in ("owner","control"): return
     date=now().date().isoformat()
     c=db(); emps=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall(); c.close()
-
-    at=late=early=first_shift=second_shift=arrived=left=0
-    at_lines=[]; lunch_lines=[]; dinner_lines=[]
-
+    first=[]; second=[]
     for e in emps:
         rows=last_events(e["dahua_id"],date)
-        if not rows: continue
-        sh=shift_for(e["dahua_id"],date)
-        if any(x["event_type"]=="Entry" for x in rows): arrived+=1
-        if rows[-1]["event_type"]=="Exit": left+=1
-        if rows[-1]["event_type"]=="Entry":
-            at+=1
-            if sh in ("1-я","Нестандартная"): first_shift+=1
-            elif sh=="2-я": second_shift+=1
-            at_lines.append(f"🟢 {e['name']} — {sh}")
-        ins=[r for r in rows if r["event_type"]=="Entry"]
-        outs=[r for r in rows if r["event_type"]=="Exit"]
-        if ins:
-            first=datetime.fromisoformat(ins[0]["event_time"])
-            start_time=10 if sh in ("1-я","Нестандартная") else 13
-            if first.hour*60+first.minute>start_time*60+5: late+=1
-        if outs:
-            last=datetime.fromisoformat(outs[-1]["event_time"])
-            limit=21 if sh in ("1-я","Нестандартная") else 22
-            if last.hour<limit: early+=1
+        if rows and rows[-1]["event_type"]=="Entry":
+            sh=shift_for(e["dahua_id"],date)
+            line=f"🟢 {e['name']} — {datetime.fromisoformat(rows[-1]['event_time']):%H:%M}"
+            (first if sh in ("1-я","Нестандартная") else second).append(line)
+    text=[f"👥 СЕЙЧАС НА РАБОТЕ — {now():%d.%m.%Y}","",f"1️⃣ ПЕРВАЯ СМЕНА — {len(first)} человек"]+(first or ["— Нет сотрудников"])+["",f"2️⃣ ВТОРАЯ СМЕНА — {len(second)} человек"]+(second or ["— Нет сотрудников"])+["",f"👥 ВСЕГО НА РАБОТЕ: {len(first)+len(second)}"]
+    await update.message.reply_text("
+".join(text))
 
+async def control_late(update,ctx):
+    if role(update.effective_user.id) not in ("owner","control"): return
+    date=now().date().isoformat()
+    c=db(); emps=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall(); c.close()
+    first=[]; second=[]
+    for e in emps:
+        rows=last_events(e["dahua_id"],date); ins=[r for r in rows if r["event_type"]=="Entry"]
+        if not ins: continue
+        sh=shift_for(e["dahua_id"],date); t=datetime.fromisoformat(ins[0]["event_time"])
+        start=10*60 if sh in ("1-я","Нестандартная") else 13*60
+        mins=max(0,t.hour*60+t.minute-start)
+        if mins>5:
+            line=f"🔴 {e['name']} — {t:%H:%M} — опоздание {mins} мин."
+            (first if sh in ("1-я","Нестандартная") else second).append(line)
+    text=["🔴 ОПОЗДАВШИЕ",f"📅 {now():%d.%m.%Y}","",f"1️⃣ ПЕРВАЯ СМЕНА — {len(first)}"]+(first or ["— Нет опоздавших"])+["",f"2️⃣ ВТОРАЯ СМЕНА — {len(second)}"]+(second or ["— Нет опоздавших"])
+    await update.message.reply_text("
+".join(text))
+
+async def control_meals(update,ctx):
+    if role(update.effective_user.id) not in ("owner","control"): return
+    date=now().date().isoformat()
     c=db()
-    lunch_rows=c.execute("SELECT name,dahua_id FROM meals WHERE meal_date=? AND meal_type='Обед' AND status='served' AND returned_at IS NULL ORDER BY served_at",(date,)).fetchall()
-    dinner_rows=c.execute("SELECT name,dahua_id FROM meals WHERE meal_date=? AND meal_type='Ужин' AND status='served' AND returned_at IS NULL ORDER BY served_at",(date,)).fetchall()
-    lunch_requested=c.execute("SELECT COUNT(*) n FROM meals WHERE meal_date=? AND meal_type='Обед' AND status IN ('requested','served')",(date,)).fetchone()["n"]
-    dinner_requested=c.execute("SELECT COUNT(*) n FROM meals WHERE meal_date=? AND meal_type='Ужин' AND status IN ('requested','served')",(date,)).fetchone()["n"]
-    extra_count=c.execute("SELECT COUNT(*) n FROM meals WHERE meal_date=? AND extra=1",(date,)).fetchone()["n"]
+    lunch=c.execute("SELECT name,dahua_id,served_at FROM meals WHERE meal_date=? AND meal_type='Обед' AND status='served' AND returned_at IS NULL ORDER BY served_at",(date,)).fetchall()
+    dinner=c.execute("SELECT name,dahua_id,served_at FROM meals WHERE meal_date=? AND meal_type='Ужин' AND status='served' AND returned_at IS NULL ORDER BY served_at",(date,)).fetchall()
     c.close()
+    lf=[];ls=[];df=[];ds=[]
+    for r in lunch:
+        sh=shift_for(r["dahua_id"],date); line=f"🥗 {r['name']} — {datetime.fromisoformat(r['served_at']):%H:%M}"
+        (lf if sh in ("1-я","Нестандартная") else ls).append(line)
+    for r in dinner:
+        sh=shift_for(r["dahua_id"],date); line=f"🌙 {r['name']} — {datetime.fromisoformat(r['served_at']):%H:%M}"
+        (df if sh in ("1-я","Нестандартная") else ds).append(line)
+    text=["🍽 СЕЙЧАС НА ОБЕДЕ / УЖИНЕ",f"📅 {now():%d.%m.%Y}","",f"🥗 ОБЕД — 1-я смена ({len(lf)})"]+(lf or ["— Никого"])+["",f"🥗 ОБЕД — 2-я смена ({len(ls)})"]+(ls or ["— Никого"])+["",f"🌙 УЖИН — 1-я смена ({len(df)})"]+(df or ["— Никого"])+["",f"🌙 УЖИН — 2-я смена ({len(ds)})"]+(ds or ["— Никого"])
+    await update.message.reply_text("
+".join(text))
 
-    lunch_first=lunch_second=dinner_first=dinner_second=0
-    for r in lunch_rows:
-        sh=shift_for(r["dahua_id"],date)
-        if sh in ("1-я","Нестандартная"): lunch_first+=1
-        elif sh=="2-я": lunch_second+=1
-        lunch_lines.append(f"🥗 {r['name']} — {sh}")
-    for r in dinner_rows:
-        sh=shift_for(r["dahua_id"],date)
-        if sh in ("1-я","Нестандартная"): dinner_first+=1
-        elif sh=="2-я": dinner_second+=1
-        dinner_lines.append(f"🌙 {r['name']} — {sh}")
+async def control_menu(update,ctx):
+    if role(update.effective_user.id) not in ("owner","control"): return
+    await update.message.reply_text("📊 КОНТРОЛЬ",reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("👥 Сейчас на работе",callback_data="control:current")],
+        [InlineKeyboardButton("🔴 Опоздали",callback_data="control:late")],
+        [InlineKeyboardButton("🍽 Сейчас на обеде",callback_data="control:meals")]]))
 
-    text=[
-        f"📊 СЕЙЧАС НА РАБОТЕ — {now():%d.%m.%Y}","",
-        "📌 ОБЩАЯ СТАТИСТИКА:",
-        f"👥 Всего активных сотрудников: {len(emps)}",
-        f"🟢 Пришли сегодня: {arrived}",
-        f"🔴 Ушли сегодня: {left}",
-        f"👥 Сейчас на работе: {at}",
-        f"1️⃣ Первая смена: {first_shift}",
-        f"2️⃣ Вторая смена: {second_shift}","",
-        "🍽 ПИТАНИЕ СЕЙЧАС:",
-        f"🥗 На обеде: {len(lunch_rows)}",
-        f"   1️⃣ Первая смена: {lunch_first}",
-        f"   2️⃣ Вторая смена: {lunch_second}",
-        f"🌙 На ужине: {len(dinner_rows)}",
-        f"   1️⃣ Первая смена: {dinner_first}",
-        f"   2️⃣ Вторая смена: {dinner_second}",
-        f"➕ Дополнительных талонов: {extra_count}","",
-        "⏱ ДИСЦИПЛИНА:",
-        f"⏰ Опоздали: {late}",
-        f"⚠️ Ранний уход: {early}"
-    ]
-    if at_lines: text += ["","👥 СЕЙЧАС НА РАБОТЕ:"] + at_lines
-    if lunch_lines: text += ["","🥗 СЕЙЧАС НА ОБЕДЕ:"] + lunch_lines
-    if dinner_lines: text += ["","🌙 СЕЙЧАС НА УЖИНЕ:"] + dinner_lines
-    await update.message.reply_text("\n".join(text))
+async def control_cb(update,ctx):
+    q=update.callback_query;await q.answer()
+    if role(q.from_user.id) not in ("owner","control"): return
+    kind=q.data.split(":")[1]
+    if kind=="current": return await control_current(q.message,ctx)
+    if kind=="late": return await control_late(q.message,ctx)
+    if kind=="meals": return await control_meals(q.message,ctx)
 
 async def qr(update,ctx):
     if role(update.effective_user.id) not in ("owner","employee"): return
@@ -1530,7 +1578,7 @@ async def text_handler(update,ctx):
     menu_buttons={
         "🔐 Запросить доступ","📝 Регистрация","👥 Управление сотрудниками","➕ Добавить сотрудника",
         "👥 Сейчас на работе","🍽 Столовая","📊 Отчёты","📱 QR столовой",
-        "🔴 Опоздали","⚠️ Ранее ушли","🍽 Сейчас на обеде",
+        "🔴 Опоздали","🍽 Сейчас на обеде","📊 Контроль","➕ Зарегистрировать сотрудника",
         "🍽 Сегодня","📅 1–15 число","📅 16–конец месяца","🗓 Весь месяц",
         "👤 Мои записи","📋 Мой отчёт","🍽 Питание","➕ За счёт сотрудника","ℹ️ Помощь"
     }
@@ -1548,8 +1596,11 @@ async def text_handler(update,ctx):
     if t=="📝 Регистрация": return await registration_start(update,ctx)
     if t=="👥 Управление сотрудниками": return await employees(update,ctx)
     if t=="➕ Добавить сотрудника": return await owner_add_start(update,ctx)
-    if t in ("👥 Сейчас на работе","🔴 Опоздали","⚠️ Ранее ушли","🍽 Сейчас на обеде"):
-        return await control(update,ctx)
+    if t=="➕ Зарегистрировать сотрудника": return await owner_add_start(update,ctx)
+    if t=="📊 Контроль": return await control_menu(update,ctx)
+    if t=="👥 Сейчас на работе": return await control_current(update,ctx)
+    if t=="🔴 Опоздали": return await control_late(update,ctx)
+    if t=="🍽 Сейчас на обеде": return await control_meals(update,ctx)
     if t=="📊 Отчёты": return await report_menu(update,ctx)
     if t=="🍽 Столовая": return await canteen(update,ctx)
     if t=="🍽 Питание": return await meal_menu(update,ctx)
@@ -1698,6 +1749,8 @@ def main():
     app.add_handler(CommandHandler("sync",sync_command))
     app.add_handler(CallbackQueryHandler(access_cb,pattern=r"^access:"))
     app.add_handler(CallbackQueryHandler(report_cb,pattern=r"^report:"))
+    app.add_handler(CallbackQueryHandler(control_cb,pattern=r"^control:"))
+    app.add_handler(CallbackQueryHandler(mealapproval_cb,pattern=r"^mealapproval:"))
     app.add_handler(CallbackQueryHandler(reg_cb,pattern=r"^reg:"))
     app.add_handler(CallbackQueryHandler(emp_cb,pattern=r"^emp:"))
     app.add_handler(CallbackQueryHandler(meal_cb,pattern=r"^meal:"))
