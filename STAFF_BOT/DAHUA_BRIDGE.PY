@@ -1,21 +1,25 @@
 
-import os,re,json,sqlite3,hashlib,logging,asyncio,base64,tempfile
+import os,re,json,sqlite3,hashlib,logging,asyncio,tempfile
 from datetime import datetime,timedelta,timezone
 from io import BytesIO
 from PIL import Image
-import requests
-from requests.auth import HTTPDigestAuth
 from telegram import Update,ReplyKeyboardMarkup,InlineKeyboardButton,InlineKeyboardMarkup
 from telegram.ext import Application,CommandHandler,MessageHandler,ContextTypes,CallbackQueryHandler,filters
 import qrcode
+import atexit
+import ctypes
+from NetSDK.NetSDK import NetClient
+from NetSDK.SDK_Struct import *
+from NetSDK.SDK_Enum import *
 
 logging.basicConfig(level=logging.INFO,format="%(asctime)s %(levelname)s %(message)s")
 log=logging.getLogger("funlandia_staff_secure")
 BOT_TOKEN=os.getenv("BOT_TOKEN","").strip()
-DAHUA_URL=os.getenv("DAHUA_URL","https://192.168.1.202").rstrip("/")
+DAHUA_IP=os.getenv("DAHUA_IP","192.168.1.202").strip()
+DAHUA_PORT=int(os.getenv("DAHUA_PORT","37777"))
 DAHUA_USER=os.getenv("DAHUA_USER","admin").strip()
 DAHUA_PASSWORD=os.getenv("DAHUA_PASSWORD","").strip()
-DB_PATH=os.getenv("STAFF_DB_PATH","/data/staff.db")
+DB_PATH=os.getenv("STAFF_DB_PATH","data/staff.db")
 ADMIN_ID=os.getenv("STAFF_ADMIN_CHAT_ID","").strip()
 CONTROL_IDS={x.strip() for x in os.getenv("STAFF_CONTROL_IDS","").split(",") if x.strip()}
 TZ=timezone(timedelta(hours=5))
@@ -82,7 +86,14 @@ def tg_send(chat_id,text,markup=None):
     try:
         p={"chat_id":int(chat_id),"text":text}
         if markup:p["reply_markup"]=markup
-        requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",json=p,timeout=8,proxies={"http":None,"https":None})
+        import urllib.request
+        req=urllib.request.Request(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            data=json.dumps(p,ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type":"application/json"},
+            method="POST")
+        urllib.request.urlopen(req,timeout=8).read()
+
     except Exception: pass
 
 def parse_time(v):
@@ -120,74 +131,266 @@ def next_dahua_user_id():
     c.close()
     return str(max(vals+[0])+1)
 
+class DahuaNetSDK:
+    """Единая NetSDK-сессия. Только NetSDK/37777, без HTTP/HTTPS/CGI."""
+    def __init__(self):
+        self.sdk = NetClient()
+        self.login_id = 0
+        if not self.sdk.InitEx(None):
+            raise RuntimeError("NetSDK InitEx failed")
+
+    def _login(self):
+        if self.login_id:
+            return self.login_id
+        login_in = NET_IN_LOGIN_WITH_HIGHLEVEL_SECURITY()
+        login_in.dwSize = ctypes.sizeof(login_in)
+        login_in.szIP = DAHUA_IP.encode()
+        login_in.nPort = DAHUA_PORT
+        login_in.szUserName = DAHUA_USER.encode()
+        login_in.szPassword = DAHUA_PASSWORD.encode()
+
+        login_out = NET_OUT_LOGIN_WITH_HIGHLEVEL_SECURITY()
+        login_out.dwSize = ctypes.sizeof(login_out)
+        login_id, _, error = self.sdk.LoginWithHighLevelSecurity(login_in, login_out)
+        if not login_id:
+            raise RuntimeError(f"Dahua NetSDK login failed: {error}")
+        self.login_id = login_id
+        log.info("Dahua NetSDK connected: %s:%s", DAHUA_IP, DAHUA_PORT)
+        return self.login_id
+
+    def _ensure_login(self):
+        try:
+            return self._login()
+        except Exception:
+            self.login_id = 0
+            return self._login()
+
+    def _last_error(self):
+        try:
+            return str(self.sdk.GetLastError())
+        except Exception:
+            try: return str(self.sdk.GetLastErrorMessage())
+            except Exception: return "unknown SDK error"
+
+    def create_user(self, user_id, name):
+        lid=self._ensure_login()
+        user=NET_ACCESS_USER_INFO()
+        user.szUserID=str(user_id).encode()[:31]
+        user.szName=str(name).encode()[:31]
+        user.nUserStatus=0
+        users=(NET_ACCESS_USER_INFO*1)()
+        users[0]=user
+
+        inp=NET_IN_ACCESS_USER_SERVICE_INSERT()
+        inp.dwSize=ctypes.sizeof(inp)
+        inp.nInfoNum=1
+        inp.pUserInfo=ctypes.cast(users,ctypes.POINTER(NET_ACCESS_USER_INFO))
+
+        out=NET_OUT_ACCESS_USER_SERVICE_INSERT()
+        out.dwSize=ctypes.sizeof(out)
+        out.nMaxRetNum=1
+        fail=(ctypes.c_int*1)()
+        out.pFailCode=ctypes.cast(fail,ctypes.POINTER(ctypes.c_int))
+
+        ok=self.sdk.OperateAccessUserService(
+            lid, EM_A_NET_EM_ACCESS_CTL_USER_SERVICE.INSERT, inp, out, 15000)
+        if not ok:
+            raise RuntimeError(f"NetSDK create user failed: {self._last_error()}")
+        if fail[0] != 0:
+            raise RuntimeError(f"NetSDK create user failed: fail code {fail[0]}")
+        return True
+
+    def add_face(self, user_id, photo_bytes):
+        lid=self._ensure_login()
+        photo_buffer=ctypes.create_string_buffer(photo_bytes)
+        face=NET_ACCESS_FACE_INFO()
+        face.szUserID=str(user_id).encode()[:31]
+        face.nFacePhoto=1
+        face.nInFacePhotoLen[0]=len(photo_bytes)
+        face.nOutFacePhotoLen[0]=len(photo_bytes)
+        face.pFacePhoto[0]=ctypes.cast(photo_buffer,ctypes.c_void_p)
+
+        faces=(NET_ACCESS_FACE_INFO*1)()
+        faces[0]=face
+
+        inp=NET_IN_ACCESS_FACE_SERVICE_INSERT()
+        inp.dwSize=ctypes.sizeof(inp)
+        inp.nFaceInfoNum=1
+        inp.pFaceInfo=ctypes.cast(faces,ctypes.POINTER(NET_ACCESS_FACE_INFO))
+
+        out=NET_OUT_ACCESS_FACE_SERVICE_INSERT()
+        out.dwSize=ctypes.sizeof(out)
+        out.nMaxRetNum=1
+        fail=(ctypes.c_int*1)()
+        out.pFailCode=ctypes.cast(fail,ctypes.POINTER(ctypes.c_int))
+
+        ok=self.sdk.OperateAccessFaceService(
+            lid, EM_A_NET_EM_ACCESS_CTL_FACE_SERVICE.INSERT, inp, out, 15000)
+        if not ok:
+            raise RuntimeError(f"NetSDK add face failed: {self._last_error()}")
+        if fail[0] != 0:
+            raise RuntimeError(f"NetSDK add face failed: fail code {fail[0]}")
+        return True
+
+    def delete_user(self, user_id):
+        lid=self._ensure_login()
+        inp=NET_IN_ACCESS_USER_SERVICE_REMOVE()
+        inp.dwSize=ctypes.sizeof(inp)
+        inp.nUserNum=1
+        inp.szUserID=str(user_id).encode()[:31]
+
+        out=NET_OUT_ACCESS_USER_SERVICE_REMOVE()
+        out.dwSize=ctypes.sizeof(out)
+        out.nMaxRetNum=1
+        fail=(ctypes.c_int*1)()
+        out.pFailCode=ctypes.cast(fail,ctypes.POINTER(ctypes.c_int))
+
+        ok=self.sdk.OperateAccessUserService(
+            lid, EM_A_NET_EM_ACCESS_CTL_USER_SERVICE.REMOVE, inp, out, 15000)
+        if not ok:
+            raise RuntimeError(f"NetSDK delete user failed: {self._last_error()}")
+        if fail[0] != 0:
+            raise RuntimeError(f"NetSDK delete user failed: fail code {fail[0]}")
+        return True
+
+    @staticmethod
+    def _set_time(obj, candidates, dt):
+        for name in candidates:
+            if hasattr(obj,name):
+                t=getattr(obj,name)
+                for field,val in (
+                    ("dwYear",dt.year),("dwMonth",dt.month),("dwDay",dt.day),
+                    ("dwHour",dt.hour),("dwMinute",dt.minute),("dwSecond",dt.second)):
+                    if hasattr(t,field):
+                        setattr(t,field,val)
+                try: setattr(obj,name,t)
+                except Exception: pass
+                return True
+        return False
+
+    @staticmethod
+    def _set_user_condition(obj, uid):
+        if not uid:return
+        for name in ("szUserID","szUserIDEx"):
+            if hasattr(obj,name):
+                try:
+                    setattr(obj,name,str(uid).encode()[:31])
+                    flag="bUserID" if name=="szUserID" else "bUserIDEx"
+                    if hasattr(obj,flag): setattr(obj,flag,True)
+                    return
+                except Exception: pass
+
+    @staticmethod
+    def _decode(v):
+        if isinstance(v, bytes):
+            return v.split(b"\\0",1)[0].decode("utf-8","ignore")
+        if hasattr(v,"dwYear") and hasattr(v,"dwMonth"):
+            try:
+                if int(v.dwYear):
+                    return f"{int(v.dwYear):04d}-{int(v.dwMonth):02d}-{int(v.dwDay):02d} {int(v.dwHour):02d}:{int(v.dwMinute):02d}:{int(v.dwSecond):02d}"
+            except Exception: pass
+        if isinstance(v,(int,float,str,bool)): return v
+        return str(v)
+
+    @classmethod
+    def record_to_dict(cls, rec):
+        d={}
+        for name,_ in getattr(rec,"_fields_",[]):
+            try:d[name]=cls._decode(getattr(rec,name))
+            except Exception:pass
+        aliases={
+            "UserID":["szUserID","szUserIDEx","userID","UserID"],
+            "CardName":["szCardName","szName","CardName","Name"],
+            "RecNo":["nRecordNo","nRecNo","RecNo"],
+            "CreateTime":["stuTime","stTime","stuCreateTime","CreateTime"],
+            "Type":["emType","Type"],
+            "Status":["emStatus","Status"],
+            "ErrorCode":["nErrorCode","ErrorCode"],
+        }
+        for out,names in aliases.items():
+            for n in names:
+                if n in d and d[n] not in ("",None,0):
+                    d[out]=d[n]; break
+        return d
+
+    def get_records(self, start, end, user_id=None):
+        lid=self._ensure_login()
+        condition=NET_FIND_RECORD_ACCESSCTLCARDREC_CONDITION_EX()
+        condition.dwSize=ctypes.sizeof(condition)
+        self._set_time(condition,("stuStartTime","stStartTime","startTime","StartTime"),start)
+        self._set_time(condition,("stuEndTime","stEndTime","endTime","EndTime"),end)
+        self._set_user_condition(condition,user_id)
+
+        inp=NET_IN_FIND_RECORD_PARAM()
+        inp.dwSize=ctypes.sizeof(inp)
+        inp.emType=EM_NET_RECORD_TYPE.ACCESSCTLCARDREC_EX
+        inp.pQueryCondition=ctypes.cast(ctypes.pointer(condition),ctypes.c_void_p)
+
+        out=NET_OUT_FIND_RECORD_PARAM()
+        out.dwSize=ctypes.sizeof(out)
+        if not self.sdk.FindRecord(lid,inp,out,15000):
+            raise RuntimeError(f"NetSDK FindRecord failed: {self._last_error()}")
+
+        rows=[]
+        try:
+            while True:
+                count=100
+                nxt=NET_IN_FIND_NEXT_RECORD_PARAM()
+                nxt.dwSize=ctypes.sizeof(nxt)
+                nxt.lFindeHandle=out.lFindeHandle
+                nxt.nFileCount=count
+
+                nout=NET_OUT_FIND_NEXT_RECORD_PARAM()
+                nout.dwSize=ctypes.sizeof(nout)
+                nout.nMaxRecordNum=count
+                record_list=(NET_RECORDSET_ACCESS_CTL_CARDREC*count)()
+                for i in range(count):
+                    record_list[i].dwSize=ctypes.sizeof(NET_RECORDSET_ACCESS_CTL_CARDREC)
+                nout.pRecordList=ctypes.cast(record_list,ctypes.c_void_p)
+
+                if not self.sdk.FindNextRecord(nxt,nout,15000):
+                    raise RuntimeError(f"NetSDK FindNextRecord failed: {self._last_error()}")
+                n=int(nout.nRetRecordNum)
+                for i in range(n):
+                    rows.append(self.record_to_dict(record_list[i]))
+                if n < count: break
+        finally:
+            try:self.sdk.FindRecordClose(out.lFindeHandle)
+            except Exception:pass
+        return rows
+
+    def user_name(self, uid):
+        lid=self._ensure_login()
+        inp=NET_IN_ACCESS_USER_SERVICE_GET()
+        inp.dwSize=ctypes.sizeof(inp)
+        inp.nUserNum=1
+        inp.szUserID=str(uid).encode()[:31]
+        users=(NET_ACCESS_USER_INFO*1)()
+        fail=(ctypes.c_int*1)()
+        out=NET_OUT_ACCESS_USER_SERVICE_GET()
+        out.dwSize=ctypes.sizeof(out)
+        out.nMaxRetNum=1
+        out.pUserInfo=ctypes.cast(users,ctypes.POINTER(NET_ACCESS_USER_INFO))
+        out.pFailCode=ctypes.cast(fail,ctypes.POINTER(ctypes.c_int))
+        ok=self.sdk.OperateAccessUserService(
+            lid,EM_A_NET_EM_ACCESS_CTL_USER_SERVICE.GET,inp,out,5000)
+        if ok:
+            return bytes(users[0].szName).split(b"\\0",1)[0].decode("utf-8","ignore")
+        return None
+
+    def close(self):
+        try:
+            if self.login_id:self.sdk.Logout(self.login_id)
+        except Exception:pass
+        try:self.sdk.Cleanup()
+        except Exception:pass
+        self.login_id=0
+
+DAHUA_SDK=DahuaNetSDK()
+atexit.register(DAHUA_SDK.close)
+
 def ensure_dahua_user(user_id,name):
-    # Для ASI6213S-PW сначала должен существовать AccessControlCard,
-    # затем FaceInfoManager добавляет к этому UserID лицо.
-    # Attendance.cgi?action=addUser на этой прошивке возвращает HTTP 400,
-    # поэтому этот старый путь больше не используем.
-    uid=str(user_id)
-    finder=requests.get(
-        DAHUA_URL+"/cgi-bin/recordFinder.cgi",
-        params={
-            "action":"find",
-            "name":"AccessControlCard",
-            "condition.UserID":uid,
-            "count":"100"
-        },
-        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
-        verify=False,timeout=20)
-    if not finder.ok:
-        raise RuntimeError(
-            f"Dahua AccessControlCard check failed: HTTP {finder.status_code}: "
-            f"{finder.text.strip()[:300]}"
-        )
-
-    if re.search(r"records\[\d+\]\.UserID="+re.escape(uid)+r"(?:\r?\n|$)",finder.text):
-        return True
-
-    params={
-        "action":"insert",
-        "name":"AccessControlCard",
-        "CardName":str(name)[:32],
-        "CardNo":uid,
-        "UserID":uid,
-        "CardStatus":"0",
-        "CardType":"0"
-    }
-    r=requests.get(
-        DAHUA_URL+"/cgi-bin/recordUpdater.cgi",
-        params=params,
-        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
-        verify=False,timeout=20)
-    txt=r.text.strip()
-    if r.ok and (
-        txt.upper()=="OK" or
-        re.search(r"(?:RecNo|recno)\s*=\s*\d+",txt)
-    ):
-        return True
-
-    # Если запись уже появилась параллельно или осталась от предыдущей
-    # попытки, повторно проверяем её перед выдачей ошибки.
-    finder2=requests.get(
-        DAHUA_URL+"/cgi-bin/recordFinder.cgi",
-        params={
-            "action":"find",
-            "name":"AccessControlCard",
-            "condition.UserID":uid,
-            "count":"100"
-        },
-        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
-        verify=False,timeout=20)
-    if finder2.ok and re.search(
-        r"records\[\d+\]\.UserID="+re.escape(uid)+r"(?:\r?\n|$)",
-        finder2.text
-    ):
-        return True
-
-    raise RuntimeError(
-        f"Dahua AccessControlCard enrollment failed: HTTP {r.status_code}: "
-        f"{txt[:500]}"
-    )
+    return DAHUA_SDK.create_user(user_id,name)
 
 def prepare_face_photo(photo_bytes):
     img=Image.open(BytesIO(photo_bytes)).convert("RGB")
@@ -204,126 +407,45 @@ def prepare_face_photo(photo_bytes):
     return last
 
 def save_registration_photo(user_id,name,photo_bytes):
-    # ВОССТАНОВЛЕН ТОЧНОЙ РАБОЧЕЙ ЛОГИКОЙ ДОБАВЛЕНИЯ FACE ID:
-    # FaceInfoManager сам принимает UserID и фотографию.
-    # Attendance.cgi?action=addUser здесь НЕ вызываем.
     if len(photo_bytes)>200*1024:
         raise ValueError("Фото больше 200 KB.")
-    payload={"UserID":str(user_id),"Info":{"UserName":str(name)[:32],
-        "PhotoData":[base64.b64encode(photo_bytes).decode("ascii")]}}
-    r=requests.post(DAHUA_URL+"/cgi-bin/FaceInfoManager.cgi",
-        params={"action":"add"},json=payload,
-        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
-        verify=False,timeout=25)
-    r.raise_for_status()
-    if r.text.strip().upper()!="OK":
-        raise RuntimeError(f"Dahua ответил: {r.text.strip()[:300]}")
-    return True
+    return DAHUA_SDK.add_face(user_id,photo_bytes)
 
 def try_dahua_capture(user_id,name):
-    endpoint=os.getenv("DAHUA_FACE_CAPTURE_URL","").strip()
-    if not endpoint:
-        return False
-    try:
-        r=requests.post(endpoint,json={"UserID":str(user_id),"UserName":str(name)},
-            auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
-            verify=False,timeout=20)
-        return r.ok and r.text.strip().upper() in ("OK","SUCCESS","TRUE")
-    except Exception:
-        return False
+    # Прямой запуск камеры через текущий SDK-путь не подтверждён.
+    # Регистрация лица выполняется через фото + OperateAccessFaceService.
+    return False
 
-def dahua_get(path,params):
-    r=requests.get(DAHUA_URL+path,params=params,auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),verify=False,timeout=15)
-    r.raise_for_status(); return r
+def delete_dahua_user(user_id):
+    return DAHUA_SDK.delete_user(user_id)
 
 def dahua_user(uid):
     try:
-        r=dahua_get("/cgi-bin/Attendance.cgi",{"action":"getUser","UserID":str(uid)})
-        txt=r.text.strip()
-        try:
-            data=r.json()
-            obj=data.get("UserInfo",data)
-            name=obj.get("UserName") or obj.get("Name")
-            if name:return str(name)
-        except Exception: pass
-        m=re.search(r'"(?:UserName|Name)"\s*:\s*"([^"]+)"',txt)
-        if m:return m.group(1)
-    except Exception as e: log.warning("Dahua getUser %s: %s",uid,e)
+        return DAHUA_SDK.user_name(uid)
+    except Exception as e:
+        log.warning("Dahua NetSDK getUser %s: %s",uid,e)
     return None
 
 def get_records(start,end):
-    """Read Dahua attendance records with offset pagination.
+    return DAHUA_SDK.get_records(start,end)
 
-    IMPORTANT: on ASI6213S-PW, found=500 means the number of
-    records returned for the current page, not the total number
-    of records matching the query. Therefore we must continue
-    while a full page is returned.
-    """
-    all_rows={}
-    offset=0
-    page_size=500
-    max_pages=1000
-
-    for page_no in range(max_pages):
-        p={"action":"find","name":"AccessControlCardRec",
-           "StartTime":str(int(start.timestamp())),
-           "EndTime":str(int(end.timestamp())),
-           "count":str(page_size),"offset":str(offset)}
-        r=dahua_get("/cgi-bin/recordFinder.cgi",p)
-
-        rows={}
-        found=None
-        for line in r.text.replace("\r","").splitlines():
-            if line.startswith("found="):
-                try:
-                    found=int(line.split("=",1)[1].strip())
-                except Exception:
-                    found=None
-            m=re.match(r"records\[(\d+)\]\.([^=]+)=(.*)$",line)
-            if m:
-                rows.setdefault(m.group(1),{})[m.group(2)]=m.group(3)
-
-        if not rows:
-            break
-
-        before=len(all_rows)
-        for row in rows.values():
-            key=str(row.get("RecNo","")).strip()
-            if not key:
-                key=hashlib.sha1(
-                    json.dumps(row,sort_keys=True).encode()
-                ).hexdigest()
-            all_rows[key]=row
-        added=len(all_rows)-before
-
-        log.info("Dahua records page=%s offset=%s returned=%s found=%s total_unique=%s",
-                 page_no+1,offset,len(rows),found,len(all_rows))
-
-        # On this firmware found is the page size, not a global total.
-        if len(rows)<page_size:
-            break
-
-        # Protect against a device that ignores offset and repeats a page.
-        if added==0:
-            log.warning("Dahua pagination stopped: offset=%s returned no new RecNo values",offset)
-            break
-
-        offset += page_size
-    return list(all_rows.values())
 def import_records(records):
     c=db(); new=[]
     for x in records:
         uid=str(x.get("UserID","")).strip()
         if not uid: continue
-        # ASI6213S-PW can report valid historical face events with
-        # Status=0 / ErrorCode=96. A real UserID is the reliable filter.
-        rec=str(x.get("RecNo","")).strip() or hashlib.sha1(json.dumps(x,sort_keys=True).encode()).hexdigest()
-        tm=parse_time(x.get("CreateTime"))
+        rec=str(x.get("RecNo","")).strip() or hashlib.sha1(json.dumps(x,sort_keys=True,default=str).encode()).hexdigest()
+        raw_time=x.get("CreateTime")
+        tm=parse_time(raw_time)
         typ=str(x.get("Type","")).strip()
-        if typ not in ("Entry","Exit"): typ="Entry"
+        # SDK may expose enum numeric values; 0/Entry are treated as Entry, nonzero/Exit as Exit only when explicit.
+        if typ not in ("Entry","Exit"):
+            s=typ.lower()
+            typ="Exit" if "exit" in s or s in ("1","2") else "Entry"
         name=str(x.get("CardName","")).strip() or dahua_user(uid) or uid
         try:
-            c.execute("INSERT INTO attendance VALUES(?,?,?,?,?,?,?)",(rec,uid,name,tm.isoformat(),typ,1,json.dumps(x,ensure_ascii=False)))
+            c.execute("INSERT INTO attendance VALUES(?,?,?,?,?,?,?)",
+                      (rec,uid,name,tm.isoformat(),typ,1,json.dumps(x,ensure_ascii=False,default=str)))
             new.append((uid,name,tm,typ))
         except sqlite3.IntegrityError: pass
     c.commit(); c.close()
@@ -525,6 +647,7 @@ async def face_photo_handler(update,ctx):
         bio=BytesIO(); await f.download_to_memory(out=bio)
         photo=bio.getvalue()
         internal_id=next_internal_id(); dahua_id=next_dahua_user_id()
+        ensure_dahua_user(dahua_id,fio)
         save_registration_photo(dahua_id,fio,photo)
         c=db()
         c.execute("INSERT OR REPLACE INTO employees(dahua_id,name,active,telegram_id,role,created_at,internal_id,phone) VALUES(?,?,?,?,?,?,?,?)",
@@ -656,6 +779,11 @@ async def owner_add_input(update,ctx):
         c.execute("INSERT OR REPLACE INTO employees(dahua_id,name,active,telegram_id,role,created_at,internal_id,phone) VALUES(?,?,?,?,?,?,?,?)",
                   (dahua_id,fio,0,None,"employee",now().isoformat(),internal_id,phone))
         c.commit(); c.close()
+        try:
+            ensure_dahua_user(dahua_id,fio)
+        except Exception:
+            c=db(); c.execute("DELETE FROM employees WHERE dahua_id=? AND active=0",(dahua_id,)); c.commit(); c.close()
+            raise
         ctx.user_data.clear()
         if creator_role=="control":
             mk=InlineKeyboardMarkup([
@@ -1563,7 +1691,7 @@ async def post_init(app):
 def main():
     if not BOT_TOKEN:raise RuntimeError("BOT_TOKEN is not set")
     init_db()
-    log.info("Starting Funlandia Staff Bot; Dahua=%s; poll=%ss", DAHUA_URL, POLL)
+    log.info("Starting Funlandia Staff Bot; Dahua NetSDK=%s:%s; poll=%ss", DAHUA_IP, DAHUA_PORT, POLL)
     app=Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     app.add_handler(CommandHandler("start",start))
     app.add_handler(CommandHandler("access",access_request))
@@ -1582,6 +1710,12 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO,face_photo_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,text_handler))
     app.add_error_handler(error)
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
 
 if __name__=="__main__":main()
