@@ -1334,15 +1334,20 @@ async def meal_menu(update,ctx):
     c=db();e=c.execute("SELECT * FROM employees WHERE telegram_id=? AND active=1",(tg,)).fetchone();c.close()
     if not e:return await update.message.reply_text("🔒 Вы не зарегистрированы для питания.")
     date=now().date().isoformat(); shift=shift_for(e["dahua_id"],date); buttons=[]; lines=[f"🍽 ПИТАНИЕ — {now():%d.%m.%Y}",f"👤 {e['name']}",f"🔄 Смена: {shift}",""]
-    for kind in ("Обед","Ужин"):
-        if not meal_entitlement(e["dahua_id"],kind): continue
-        ok,reason=meal_access(e["dahua_id"],kind,date)
-        if ok:
-            c=db();row=c.execute("SELECT * FROM meals WHERE dahua_id=? AND meal_date=? AND meal_type=? AND extra=0 ORDER BY id DESC LIMIT 1",(e["dahua_id"],date,kind)).fetchone();c.close()
-            if row and row["status"]=="served": buttons.append([InlineKeyboardButton(f"🔙 Закончил {kind.lower()}",callback_data=f"mealreturn:{kind}")]);lines.append(f"🟢 {kind}: выдан")
-            elif row: lines.append(f"⏳ {kind}: талон оформлен")
-            else: buttons.append([InlineKeyboardButton(f"{'🥗' if kind=='Обед' else '🌙'} Получить {kind.lower()}",callback_data=f"meal:{kind}:0")]);lines.append(f"🟢 {kind}: доступен")
-        else: lines.append(f"🔒 {kind}: {reason}")
+    today_rows=last_events(e["dahua_id"],date)
+    if not today_rows:
+        lines.append("🔒 Вы сегодня не были на работе. Стандартное питание закрыто.")
+    else:
+        for kind in ("Обед","Ужин"):
+            if kind=="Обед" and shift not in ("1-я","Нестандартная"): continue
+            if kind=="Ужин" and shift not in ("1-я","2-я","Нестандартная"): continue
+            ok,reason=meal_access(e["dahua_id"],kind,date)
+            if ok:
+                c=db();row=c.execute("SELECT * FROM meals WHERE dahua_id=? AND meal_date=? AND meal_type=? AND extra=0 ORDER BY id DESC LIMIT 1",(e["dahua_id"],date,kind)).fetchone();c.close()
+                if row and row["status"]=="served": buttons.append([InlineKeyboardButton(f"🔙 Закончил {kind.lower()}",callback_data=f"mealreturn:{kind}")]);lines.append(f"🟢 {kind}: выдан")
+                elif row: lines.append(f"⏳ {kind}: талон оформлен")
+                else: buttons.append([InlineKeyboardButton(f"{'🥗' if kind=='Обед' else '🌙'} Получить {kind.lower()}",callback_data=f"meal:{kind}:0")]);lines.append(f"🟢 {kind}: доступен")
+            else: lines.append(f"🔒 {kind}: {reason}")
     buttons.append([InlineKeyboardButton("➕ Питание за свой счёт",callback_data="meal:Дополнительное:1")]);lines += ["","➕ Дополнительное питание — только после подтверждения владельца."]
     await update.message.reply_text("\n".join(lines),reply_markup=InlineKeyboardMarkup(buttons))
 
