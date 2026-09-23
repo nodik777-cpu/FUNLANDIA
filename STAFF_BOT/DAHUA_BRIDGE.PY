@@ -380,7 +380,7 @@ class DahuaNetSDK:
         out.pUserInfo=ctypes.cast(users,ctypes.POINTER(NET_ACCESS_USER_INFO))
         out.pFailCode=ctypes.cast(fail,ctypes.POINTER(ctypes.c_int))
         ok=self.sdk.OperateAccessUserService(
-            lid,EM_A_NET_EM_ACCESS_CTL_USER_SERVICE.GET,inp,out,5000)
+            lid,1,inp,out,5000)
         if ok:
             return bytes(users[0].szName).split(b"\\0",1)[0].decode("utf-8","ignore")
         return None
