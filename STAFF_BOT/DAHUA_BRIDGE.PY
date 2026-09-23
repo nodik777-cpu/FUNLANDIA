@@ -689,223 +689,133 @@ async def reg_cb(update,ctx):
     tg_send(tid,f"✅ Вы зарегистрированы для питания.\n\n👤 {req['name']}\n🍽 Теперь можно пользоваться QR-кодом столовой.")
     await q.edit_message_text(f"✅ Сотрудник подтверждён:\n{req['name']}\nFace ID: {req['dahua_id']}")
 
+async def employee_management(update,ctx):
+    if role(update.effective_user.id)!="owner": return
+    await update.message.reply_text(
+        "👥 УПРАВЛЕНИЕ СОТРУДНИКАМИ",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("👤 Список сотрудников",callback_data="emp:list")],
+            [InlineKeyboardButton("🔍 Поиск сотрудника",callback_data="emp:search")],
+            [InlineKeyboardButton("🚫 Уволить сотрудника",callback_data="emp:fire_menu")],
+            [InlineKeyboardButton("🗑 Удалить сотрудника",callback_data="emp:remove_menu")],
+            [InlineKeyboardButton("🔄 Синхронизация с Dahua",callback_data="emp:sync")]
+        ]))
+
 async def employees(update,ctx):
     if role(update.effective_user.id)!="owner":return
     c=db();rows=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall();c.close()
-    if not rows:return await update.message.reply_text("Активных сотрудников пока нет.")
+    if not rows:return await update.message.reply_text("👥 Активных сотрудников пока нет.")
     for e in rows[:50]:
-        mk={"inline_keyboard":[[
-            {"text":"🚫 Уволить сотрудника","callback_data":f"emp:delete:{e['dahua_id']}"}
-        ]]}
         await update.message.reply_text(
-            f"🟢 {e['name']}\n"
-            f"🆔 {e['internal_id'] or '—'}\n"
-            f"Face ID: {e['dahua_id']}\n"
-            f"Telegram: {e['telegram_id'] or '—'}",
-            reply_markup=mk)
+            f"🟢 {e['name']}\n🆔 Табельный номер: {e['internal_id'] or '—'}\n"
+            f"📞 Телефон: {e['phone'] or '—'}\n🔢 Dahua ID: {e['dahua_id']}\n"
+            f"📅 Регистрация: {e['created_at'][:10] if e['created_at'] else '—'}",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("👤 Карточка",callback_data=f"emp:view:{e['dahua_id']}")
+            ]]))
+
+async def employee_card_cb(update,ctx,dahua_id):
+    q=update.callback_query
+    c=db();e=c.execute("SELECT * FROM employees WHERE dahua_id=?",(dahua_id,)).fetchone();c.close()
+    if not e:return await q.edit_message_text("❌ Сотрудник не найден.")
+    status="🟢 Активен" if e["active"] else "🔴 Уволен / неактивен"
+    await q.edit_message_text(
+        f"👤 {e['name']}\n\n🆔 Табельный номер: {e['internal_id'] or '—'}\n"
+        f"📞 Телефон: {e['phone'] or '—'}\n🔢 Dahua ID: {e['dahua_id']}\n"
+        f"📅 Дата регистрации: {e['created_at'][:10] if e['created_at'] else '—'}\n{status}",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🚫 Уволить сотрудника",callback_data=f"emp:fire:{dahua_id}")],
+            [InlineKeyboardButton("🗑 Удалить сотрудника",callback_data=f"emp:remove:{dahua_id}")],
+            [InlineKeyboardButton("↩️ Назад",callback_data="emp:list")]
+        ]))
 
 async def emp_cb(update,ctx):
     q=update.callback_query;await q.answer()
     if role(q.from_user.id)!="owner":return await q.edit_message_text("🔒 Только владелец.")
-    _,act,uid=q.data.split(":")
-    if act!="delete":return await q.edit_message_text("❌ Неизвестная операция.")
-
-    c=db(); e=c.execute("SELECT * FROM employees WHERE dahua_id=? AND active=1",(uid,)).fetchone(); c.close()
-    if not e:
-        return await q.edit_message_text("❌ Активный сотрудник не найден.")
-
-    # Сначала удаляем доступ на Dahua. Если это не удалось — локального
-    # сотрудника не удаляем, чтобы не получить рассинхронизацию.
-    try:
-        delete_dahua_user(uid)
-    except Exception as ex:
-        log.exception("Dahua employee deletion failed for %s",uid)
-        return await q.edit_message_text(
-            f"❌ Не удалось уволить сотрудника.\n\n"
-            f"Face ID и доступ Dahua НЕ удалены.\n"
-            f"Сотрудник оставлен в базе.\n\n"
-            f"Технический ответ: {ex}")
-
-    c=db()
-    tg=e["telegram_id"]
-    c.execute("DELETE FROM employees WHERE dahua_id=?",(uid,))
-    if tg:
-        c.execute("DELETE FROM registration_requests WHERE telegram_id=?",(tg,))
-        c.execute("DELETE FROM access_requests WHERE telegram_id=?",(tg,))
-    c.commit();c.close()
-
-    if tg:
-        tg_send(tg,"🚫 Вы уволены из системы Staff Bot Funlandia.\n\nДоступ к столовой и Staff Bot закрыт.\nЕсли вы снова станете сотрудником, потребуется новая регистрация.")
-    await q.edit_message_text(
-        f"🚫 Сотрудник уволен.\n\n"
-        f"👤 {e['name']}\n"
-        f"🆔 {e['internal_id'] or '—'}\n\n"
-        f"✅ Face ID удалён из Dahua\n"
-        f"✅ Доступ к столовой удалён\n"        f"✅ Сотрудник удалён из текущей базы\n"
-        f"📊 История прихода/ухода сохранена\n"
-        f"🍽 История питания сохранена\n\n"
-        f"Для повторного трудоустройства нужна новая регистрация.")
-
-
-async def owner_add_start(update,ctx):
-    r=role(update.effective_user.id)
-    if r not in ("owner","control"): return
-    ctx.user_data.clear()
-    ctx.user_data["add_fio"]=True
-    ctx.user_data["add_role"]=r
-    await update.message.reply_text(
-        "➕ Добавление сотрудника\\n\\nВведите ФИО:",
-        reply_markup=ReplyKeyboardMarkup([["↩️ Отмена"]],resize_keyboard=True))
-
-async def owner_add_input(update,ctx):
-    r=role(update.effective_user.id)
-    if r not in ("owner","control"): return False
-    text=(update.message.text or "").strip()
-    if ctx.user_data.get("add_fio"):
-        if len(text)<3:
-            await update.message.reply_text("❌ Введите корректное ФИО.")
-            return True
-        ctx.user_data["add_name"]=text
-        ctx.user_data.pop("add_fio",None)
-        ctx.user_data["add_phone"]=True
-        await update.message.reply_text("Введите номер телефона:",
-            reply_markup=ReplyKeyboardMarkup([["↩️ Отмена"]],resize_keyboard=True))
-        return True
-    if ctx.user_data.get("add_phone"):
-        phone=re.sub(r"[^0-9+() -]","",text)
-        if len(re.sub(r"\\D","",phone))<9:
-            await update.message.reply_text("❌ Неверный номер.")
-            return True
-        fio=ctx.user_data["add_name"]
-        creator_role=ctx.user_data.get("add_role","owner")
-        creator_id=update.effective_user.id
-        internal_id=next_internal_id()
-        dahua_id=next_dahua_user_id()
+    parts=q.data.split(":")
+    act=parts[1] if len(parts)>1 else ""
+    uid=parts[2] if len(parts)>2 else ""
+    if act=="menu":
+        return await q.edit_message_text("👥 УПРАВЛЕНИЕ СОТРУДНИКАМИ",reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("👤 Список сотрудников",callback_data="emp:list")],
+            [InlineKeyboardButton("🔍 Поиск сотрудника",callback_data="emp:search")],
+            [InlineKeyboardButton("🚫 Уволить сотрудника",callback_data="emp:fire_menu")],
+            [InlineKeyboardButton("🗑 Удалить сотрудника",callback_data="emp:remove_menu")],
+            [InlineKeyboardButton("🔄 Синхронизация с Dahua",callback_data="emp:sync")]
+        ]))
+    if act=="list":
+        c=db();rows=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall();c.close()
+        if not rows:return await q.edit_message_text("👥 Активных сотрудников пока нет.",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад",callback_data="emp:menu")]]))
+        buttons=[[InlineKeyboardButton(f"👤 {e['name']}",callback_data=f"emp:view:{e['dahua_id']}")] for e in rows[:50]]
+        buttons.append([InlineKeyboardButton("↩️ Назад",callback_data="emp:menu")])
+        return await q.edit_message_text(f"👤 Список сотрудников: {len(rows)}",reply_markup=InlineKeyboardMarkup(buttons))
+    if act=="view":
+        return await employee_card_cb(update,ctx,uid)
+    if act=="search":
+        ctx.user_data.clear();ctx.user_data["emp_search"]=True
+        return await q.edit_message_text("🔍 Введите ФИО или табельный номер сотрудника:")
+    if act in ("fire_menu","remove_menu"):
+        ctx.user_data.clear();ctx.user_data["emp_action"]=("fire" if act=="fire_menu" else "remove")
+        return await q.edit_message_text("Введите ФИО или табельный номер сотрудника:")
+    if act in ("fire","remove"):
+        c=db();e=c.execute("SELECT * FROM employees WHERE dahua_id=?",(uid,)).fetchone();c.close()
+        if not e:return await q.edit_message_text("❌ Сотрудник не найден.")
+        try: delete_dahua_user(uid)
+        except Exception as ex:
+            log.exception("Dahua removal failed for %s",uid)
+            return await q.edit_message_text(f"❌ Не удалось удалить доступ Dahua.\nСотрудник не изменён.\n\n{ex}")
         c=db()
-        c.execute("INSERT OR REPLACE INTO employees(dahua_id,name,active,telegram_id,role,created_at,internal_id,phone) VALUES(?,?,?,?,?,?,?,?)",
-                  (dahua_id,fio,0,None,"employee",now().isoformat(),internal_id,phone))
-        c.commit(); c.close()
-        try:
-            ensure_dahua_user(dahua_id,fio)
-        except Exception:
-            c=db(); c.execute("DELETE FROM employees WHERE dahua_id=? AND active=0",(dahua_id,)); c.commit(); c.close()
-            raise
-        ctx.user_data.clear()
-        if creator_role=="control":
-            mk=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📷 Зарегистрировать Face ID",callback_data=f"controlface:start:{dahua_id}")],
-                [InlineKeyboardButton("📱 Отправить фото через Telegram",callback_data=f"controlface:telegram:{dahua_id}")]
-            ])
-            await update.message.reply_text(
-                f"📝 Заявка на нового сотрудника создана.\\n\\n"
-                f"🆔 {internal_id}\\n👤 {fio}\\n📞 {phone}\\n🔢 Dahua ID: {dahua_id}\\n\\n"
-                "Сначала зарегистрируйте лицо. После успешной регистрации заявка автоматически уйдёт владельцу на подтверждение.\\n"
-                "До подтверждения сотрудник не будет активирован.",
-                reply_markup=mk)
+        if act=="fire":
+            c.execute("UPDATE employees SET active=0 WHERE dahua_id=?",(uid,))
+            msg=f"🚫 Сотрудник уволен.\n\n👤 {e['name']}\nИстория прихода/ухода и питания сохранена."
         else:
-            mk=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📷 Зарегистрировать Face ID",callback_data=f"ownerface:start:{dahua_id}")],
-                [InlineKeyboardButton("📱 Отправить фото через Telegram",callback_data=f"ownerface:telegram:{dahua_id}")]
-            ])
-            await update.message.reply_text(
-                f"✅ Сотрудник создан.\\n\\n🆔 {internal_id}\\n👤 {fio}\\n📞 {phone}\\n🔢 Dahua ID: {dahua_id}\\n\\n"
-                "Черновик сотрудника создан. После успешной регистрации лица сотрудник будет активирован без дополнительного подтверждения.",
-                reply_markup=mk)
-        return True
-    return False
+            c.execute("DELETE FROM employees WHERE dahua_id=?",(uid,))
+            msg=f"🗑 Сотрудник удалён из списка.\n\n👤 {e['name']}\nИстория прихода/ухода и питания сохранена."
+        c.commit();c.close();ctx.user_data.clear()
+        return await q.edit_message_text(msg)
+    if act=="sync":
+        c=db();rows=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall();c.close()
+        missing=[];mismatch=[]
+        for e in rows:
+            try:
+                n=dahua_user(e["dahua_id"])
+                if not n: missing.append(f"❌ {e['name']} — Dahua ID {e['dahua_id']} не найден")
+                elif n.strip()!=e["name"].strip(): mismatch.append(f"⚠️ {e['name']} — в Dahua: {n}")
+            except Exception as ex: missing.append(f"❌ {e['name']} — ошибка проверки: {ex}")
+        lines=["🔄 СИНХРОНИЗАЦИЯ С DAHUA","",f"Проверено сотрудников: {len(rows)}",""]
+        lines += missing or ["✅ Все активные сотрудники найдены в Dahua."]
+        if mismatch: lines += ["","⚠️ Несовпадения ФИО:"]+mismatch
+        lines += ["","ℹ️ Неизвестные пользователи Dahua автоматически не добавляются в Funlandia."]
+        return await q.edit_message_text("\n".join(lines),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад",callback_data="emp:menu")]]))
+    return await q.edit_message_text("❌ Неизвестная операция.")
 
-async def control_face_cb(update,ctx):
-    q=update.callback_query; await q.answer()
-    if role(q.from_user.id)!="control":
-        return await q.edit_message_text("🔒 Только контроль.")
-    parts=q.data.split(":")
-    if len(parts)!=3:
-        return await q.edit_message_text("❌ Неверная команда.")
-    action,dahua_id=parts[1],parts[2]
-    c=db(); e=c.execute("SELECT * FROM employees WHERE dahua_id=? AND active=0",(dahua_id,)).fetchone(); c.close()
-    if not e:
-        return await q.edit_message_text("❌ Черновик сотрудника не найден.")
-    if action=="start":
-        ok=try_dahua_capture(dahua_id,e["name"])
-        if ok:
-            return await create_control_approval(update,ctx,dahua_id)
-        return await q.edit_message_text(
-            "📷 Прямой запуск камеры для этой прошивки пока не подтверждён.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                "📱 Отправить фото через Telegram",callback_data=f"controlface:telegram:{dahua_id}")]]))
-    ctx.user_data.clear()
-    ctx.user_data["await_face_photo"]=True
-    ctx.user_data["control_face_target"]=dahua_id
-    await q.edit_message_text("📱 Отправьте ОДНО фото лица сотрудника. Лицо по центру, один человек, хорошее освещение.")
-
-async def create_control_approval(update,ctx,dahua_id):
-    c=db()
-    e=c.execute("SELECT * FROM employees WHERE dahua_id=? AND active=0",(str(dahua_id),)).fetchone()
-    if not e:
-        c.close()
-        return False
-    c.execute("INSERT INTO employee_approval_requests(dahua_id,name,phone,created_by,created_at,status) VALUES(?,?,?,?,?,?)",
-              (str(dahua_id),e["name"],e["phone"],update.effective_user.id,now().isoformat(),"pending"))
-    req_id=c.execute("SELECT last_insert_rowid()").fetchone()[0]
-    c.commit(); c.close()
-    if ADMIN_ID:
-        tg_send(ADMIN_ID,
-            f"🆕 НОВЫЙ СОТРУДНИК — подтверждение владельца\\n\\n"
-            f"👤 {e['name']}\\n🆔 {e['internal_id'] or '—'}\\n📞 {e['phone'] or '—'}\\n"
-            f"🔢 Dahua ID: {e['dahua_id']}\\n\\n"
-            f"Добавил: менеджер/контроль (Telegram ID {update.effective_user.id})",
-            {"inline_keyboard":[[
-                {"text":"✅ Подтвердить","callback_data":f"newemp:ok:{req_id}"},
-                {"text":"❌ Отклонить","callback_data":f"newemp:no:{req_id}"}
-            ]]})
-    ctx.user_data.clear()
-    msg=update.callback_query
-    text=(
-        f"⏳ Face ID зарегистрирован.\\n\\n👤 {e['name']}\\n🆔 {e['internal_id'] or '—'}\\n\\n"
-        "Заявка отправлена владельцу. До подтверждения сотрудник не активен.")
-    if msg:
-        await msg.edit_message_text(text)
-    elif update.message:
-        await update.message.reply_text(text)
-    return True
-
-async def newemp_cb(update,ctx):
-    q=update.callback_query; await q.answer()
-    if role(q.from_user.id)!="owner":
-        return await q.edit_message_text("🔒 Только владелец.")
-    parts=q.data.split(":")
-    if len(parts)!=3:
-        return await q.edit_message_text("❌ Неверная заявка.")
-    act,req_id=parts[1],parts[2]
-    c=db()
-    req=c.execute("SELECT * FROM employee_approval_requests WHERE id=? AND status='pending'",(req_id,)).fetchone()
-    if not req:
-        c.close()
-        return await q.edit_message_text("Заявка уже обработана или не найдена.")
-    e=c.execute("SELECT * FROM employees WHERE dahua_id=?",(req["dahua_id"],)).fetchone()
-    if not e:
-        c.close()
-        return await q.edit_message_text("Сотрудник не найден.")
-    if act=="no":
-        c.execute("UPDATE employee_approval_requests SET status='denied' WHERE id=?",(req_id,))
-        c.execute("UPDATE employees SET active=0 WHERE dahua_id=?",(req["dahua_id"],))
-        c.commit(); c.close()
-        try: delete_dahua_user(req["dahua_id"])
-        except Exception: log.exception("Failed to remove denied employee from Dahua: %s",req["dahua_id"])
-        tg_send(req["created_by"],f"❌ Владелец отклонил регистрацию сотрудника: {req['name']}.")
-        return await q.edit_message_text(f"❌ Регистрация отклонена.\\n{req['name']}")
-    c.execute("UPDATE employees SET active=1,role='employee' WHERE dahua_id=?",(req["dahua_id"],))
-    c.execute("UPDATE employee_approval_requests SET status='approved' WHERE id=?",(req_id,))
-    c.commit(); c.close()
-    tg_send(req["created_by"],f"✅ Владелец подтвердил нового сотрудника: {req['name']}.\\nСотрудник активирован.")
-    await q.edit_message_text(f"✅ Новый сотрудник подтверждён.\\n\\n👤 {req['name']}\\n🆔 {e['internal_id'] or '—'}\\n\\nСотрудник активирован. Telegram-доступ сотрудника можно выдать через обычный запрос доступа.")
-
+async def employee_search_result(update,ctx,text):
+    if role(update.effective_user.id)!="owner": return
+    term=text.strip().lower()
+    action=ctx.user_data.pop("emp_action",None)
+    c=db();rows=c.execute(
+        "SELECT * FROM employees WHERE active=1 AND (LOWER(name) LIKE ? OR LOWER(COALESCE(internal_id,'')) LIKE ?) ORDER BY name",
+        (f"%{term}%",f"%{term}%")).fetchall();c.close()
+    if not rows:return await update.message.reply_text("❌ Сотрудник не найден.",reply_markup=keyboard("owner"))
+    if action in ("fire","remove") and len(rows)==1:
+        e=rows[0]
+        return await update.message.reply_text(
+            f"👤 {e['name']}\nВыберите действие:",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🚫 Уволить",callback_data=f"emp:fire:{e['dahua_id']}")],
+                [InlineKeyboardButton("🗑 Удалить",callback_data=f"emp:remove:{e['dahua_id']}")],
+                [InlineKeyboardButton("↩️ Отмена",callback_data="emp:menu")]
+            ]))
+    buttons=[[InlineKeyboardButton(f"👤 {e['name']}",callback_data=f"emp:view:{e['dahua_id']}")] for e in rows[:20]]
+    return await update.message.reply_text("🔍 Результаты поиска:",reply_markup=InlineKeyboardMarkup(buttons))
 
 async def report_menu(update,ctx):
     if role(update.effective_user.id)!="owner": return
-    await update.message.reply_text("📊 Отчёты:",reply_markup=InlineKeyboardMarkup([
+    await update.message.reply_text("📊 ОТЧЁТЫ:",reply_markup=InlineKeyboardMarkup([
         [InlineKeyboardButton("👥 Отчёт сотрудников",callback_data="report:employees")],
-        [InlineKeyboardButton("🍽 Отчёт столовой",callback_data="report:canteen")]
+        [InlineKeyboardButton("🍽 Отчёт столовой",callback_data="report:canteen")],
+        [InlineKeyboardButton("⏰ Опоздания",callback_data="report:late")],
+        [InlineKeyboardButton("⚠️ Ранние уходы",callback_data="report:early")]
     ]))
 
 async def employee_report_menu(update,ctx):
@@ -1284,6 +1194,24 @@ async def report_cb(update,ctx):
             f"🍽 СТОЛОВАЯ — РАСЧЁТНЫЙ ПЕРИОД 16–{last_day}.{d.month:02d}.{d.year}")
     if kind=="canteen_month":
         return await send_canteen_month_report(q.message,d.year,d.month)
+    if kind in ("late","early"):
+        date=now().date().isoformat(); c=db()
+        emps=c.execute("SELECT * FROM employees WHERE active=1 ORDER BY name").fetchall(); c.close()
+        lines=["⏰ ОПОЗДАНИЯ" if kind=="late" else "⚠️ РАННИЕ УХОДЫ",f"📅 {now():%d.%m.%Y}",""]
+        found=0
+        for e in emps:
+            rows=last_events(e["dahua_id"],date)
+            ins=[x for x in rows if x["event_type"]=="Entry"]; outs=[x for x in rows if x["event_type"]=="Exit"]
+            if kind=="late" and ins:
+                sh=shift_for(e["dahua_id"],date); t=datetime.fromisoformat(ins[0]["event_time"]); start=10*60 if sh in ("1-я","Нестандартная") else 13*60
+                mins=t.hour*60+t.minute-start
+                if mins>5: lines.append(f"🔴 {e['name']} — {t:%H:%M} — {mins} мин."); found+=1
+            if kind=="early" and outs:
+                sh=shift_for(e["dahua_id"],date); t=datetime.fromisoformat(outs[-1]["event_time"]); endm=22*60 if sh in ("1-я","Нестандартная") else 21*60
+                mins=endm-(t.hour*60+t.minute)
+                if mins>5: lines.append(f"⚠️ {e['name']} — {t:%H:%M} — на {mins} мин. раньше."); found+=1
+        if not found: lines.append("— Нет записей.")
+        return await q.edit_message_text("\n".join(lines),reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад",callback_data="report:back")]]))
     return await q.edit_message_text("❌ Неизвестный отчёт.")
 
 def _entry_before(uid,date,cutoff_minutes):
@@ -1478,6 +1406,9 @@ async def text_handler(update,ctx):
     if t=="↩️ Отмена":
         ctx.user_data.clear()
         return await update.message.reply_text("↩️ Операция отменена.",reply_markup=keyboard(r))
+    if r=="owner" and (ctx.user_data.get("emp_search") or ctx.user_data.get("emp_action")):
+        ctx.user_data.pop("emp_search",None)
+        return await employee_search_result(update,ctx,t)
     if t in menu_buttons and (ctx.user_data.get("add_fio") or ctx.user_data.get("add_phone") or
                                ctx.user_data.get("reg_fio") or ctx.user_data.get("reg_phone")):
         ctx.user_data.clear()
@@ -1487,7 +1418,7 @@ async def text_handler(update,ctx):
         return await registration_input(update,ctx)
     if t=="🔐 Запросить доступ": return await access_request(update,ctx)
     if t=="📝 Регистрация": return await registration_start(update,ctx)
-    if t=="👥 Управление сотрудниками": return await employees(update,ctx)
+    if t=="👥 Управление сотрудниками": return await employee_management(update,ctx)
     if t=="➕ Добавить сотрудника": return await owner_add_start(update,ctx)
     if t=="➕ Зарегистрировать сотрудника": return await owner_add_start(update,ctx)
     if t=="📊 Контроль": return await control_menu(update,ctx)
