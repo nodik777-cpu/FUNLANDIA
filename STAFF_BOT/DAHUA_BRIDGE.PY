@@ -506,7 +506,7 @@ def keyboard(r):
     if r=="employee":
         return ReplyKeyboardMarkup([
             ["👤 Мои записи","📋 Мой отчёт"],
-            ["🍽 Питание","➕ За счёт сотрудника"],
+            ["🍽 Питание","➕ За свой счёт"],
             ["📱 QR столовой","ℹ️ Помощь"]
         ],resize_keyboard=True)
     return ReplyKeyboardMarkup([["📝 Регистрация"],["🔐 Запросить доступ"]],resize_keyboard=True)
@@ -584,14 +584,19 @@ async def owner_face_cb(update,ctx):
     if not e:
         return await q.edit_message_text("❌ Сотрудник не найден.")
     if action=="start":
-        ok=try_dahua_capture(dahua_id,e["name"])
-        if ok:
-            c=db(); c.execute("UPDATE employees SET active=1 WHERE dahua_id=?",(dahua_id,)); c.commit(); c.close()
-            return await q.edit_message_text("📷 Команда регистрации отправлена на Dahua. Встаньте перед терминалом и дождитесь захвата лица.")
         return await q.edit_message_text(
-            "📷 Прямой запуск камеры для этой прошивки пока не подтверждён.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
-                "📱 Отправить фото через Telegram",callback_data=f"ownerface:telegram:{dahua_id}")]]))
+            "📷 РЕГИСТРАЦИЯ ЧЕРЕЗ FACE ID\n\n"
+            "1. На терминале Dahua зарегистрируйте лицо сотрудника.\n"
+            "2. После успешной регистрации нажмите кнопку ниже.\n\n"
+            "ℹ️ Telegram не запускает камеру терминала напрямую.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Лицо зарегистрировано",callback_data=f"ownerface:confirm:{dahua_id}")],
+                [InlineKeyboardButton("📱 Отправить фото через Telegram",callback_data=f"ownerface:telegram:{dahua_id}")]
+            ]))
+    if action=="confirm":
+        c=db(); c.execute("UPDATE employees SET active=1 WHERE dahua_id=?",(dahua_id,)); c.commit(); c.close()
+        ctx.user_data.clear()
+        return await q.edit_message_text(f"✅ Регистрация Face ID подтверждена.\n\n👤 {e['name']}\n🆔 {e['internal_id'] or '—'}\n\nСотрудник активирован.")
     ctx.user_data["await_face_photo"]=True
     ctx.user_data["owner_face_target"]=dahua_id
     await q.edit_message_text("📱 Отправьте ОДНО фото лица сотрудника. Лицо по центру, один человек, хорошее освещение.")
@@ -688,6 +693,164 @@ async def reg_cb(update,ctx):
     c.execute("UPDATE registration_requests SET status='approved' WHERE telegram_id=?",(tid,));c.commit();c.close()
     tg_send(tid,f"✅ Вы зарегистрированы для питания.\n\n👤 {req['name']}\n🍽 Теперь можно пользоваться QR-кодом столовой.")
     await q.edit_message_text(f"✅ Сотрудник подтверждён:\n{req['name']}\nFace ID: {req['dahua_id']}")
+
+async def owner_add_start(update,ctx):
+    r=role(update.effective_user.id)
+    if r not in ("owner","control"): return
+    ctx.user_data.clear()
+    ctx.user_data["add_fio"]=True
+    ctx.user_data["add_role"]=r
+    await update.message.reply_text(
+        "➕ Добавление сотрудника\\n\\nВведите ФИО:",
+        reply_markup=ReplyKeyboardMarkup([["↩️ Отмена"]],resize_keyboard=True))
+
+async def owner_add_input(update,ctx):
+    r=role(update.effective_user.id)
+    if r not in ("owner","control"): return False
+    text=(update.message.text or "").strip()
+    if ctx.user_data.get("add_fio"):
+        if len(text)<3:
+            await update.message.reply_text("❌ Введите корректное ФИО.")
+            return True
+        ctx.user_data["add_name"]=text
+        ctx.user_data.pop("add_fio",None)
+        ctx.user_data["add_phone"]=True
+        await update.message.reply_text("Введите номер телефона:",
+            reply_markup=ReplyKeyboardMarkup([["↩️ Отмена"]],resize_keyboard=True))
+        return True
+    if ctx.user_data.get("add_phone"):
+        phone=re.sub(r"[^0-9+() -]","",text)
+        if len(re.sub(r"\\D","",phone))<9:
+            await update.message.reply_text("❌ Неверный номер.")
+            return True
+        fio=ctx.user_data["add_name"]
+        creator_role=ctx.user_data.get("add_role","owner")
+        creator_id=update.effective_user.id
+        internal_id=next_internal_id()
+        dahua_id=next_dahua_user_id()
+        c=db()
+        c.execute("INSERT OR REPLACE INTO employees(dahua_id,name,active,telegram_id,role,created_at,internal_id,phone) VALUES(?,?,?,?,?,?,?,?)",
+                  (dahua_id,fio,0,None,"employee",now().isoformat(),internal_id,phone))
+        c.commit(); c.close()
+        try:
+            ensure_dahua_user(dahua_id,fio)
+        except Exception:
+            c=db(); c.execute("DELETE FROM employees WHERE dahua_id=? AND active=0",(dahua_id,)); c.commit(); c.close()
+            raise
+        ctx.user_data.clear()
+        if creator_role=="control":
+            mk=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📷 Зарегистрировать Face ID",callback_data=f"controlface:start:{dahua_id}")],
+                [InlineKeyboardButton("📱 Отправить фото через Telegram",callback_data=f"controlface:telegram:{dahua_id}")]
+            ])
+            await update.message.reply_text(
+                f"📝 Заявка на нового сотрудника создана.\\n\\n"
+                f"🆔 {internal_id}\\n👤 {fio}\\n📞 {phone}\\n🔢 Dahua ID: {dahua_id}\\n\\n"
+                "Сначала зарегистрируйте лицо. После успешной регистрации заявка автоматически уйдёт владельцу на подтверждение.\\n"
+                "До подтверждения сотрудник не будет активирован.",
+                reply_markup=mk)
+        else:
+            mk=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📷 Зарегистрировать Face ID",callback_data=f"ownerface:start:{dahua_id}")],
+                [InlineKeyboardButton("📱 Отправить фото через Telegram",callback_data=f"ownerface:telegram:{dahua_id}")]
+            ])
+            await update.message.reply_text(
+                f"✅ Сотрудник создан.\\n\\n🆔 {internal_id}\\n👤 {fio}\\n📞 {phone}\\n🔢 Dahua ID: {dahua_id}\\n\\n"
+                "Черновик сотрудника создан. После успешной регистрации лица сотрудник будет активирован без дополнительного подтверждения.",
+                reply_markup=mk)
+        return True
+    return False
+
+async def control_face_cb(update,ctx):
+    q=update.callback_query; await q.answer()
+    if role(q.from_user.id)!="control":
+        return await q.edit_message_text("🔒 Только контроль.")
+    parts=q.data.split(":")
+    if len(parts)!=3:
+        return await q.edit_message_text("❌ Неверная команда.")
+    action,dahua_id=parts[1],parts[2]
+    c=db(); e=c.execute("SELECT * FROM employees WHERE dahua_id=? AND active=0",(dahua_id,)).fetchone(); c.close()
+    if not e:
+        return await q.edit_message_text("❌ Черновик сотрудника не найден.")
+    if action=="start":
+        return await q.edit_message_text(
+            "📷 РЕГИСТРАЦИЯ ЧЕРЕЗ FACE ID\n\n"
+            "1. На терминале Dahua зарегистрируйте лицо сотрудника.\n"
+            "2. После успешной регистрации нажмите кнопку ниже.\n\n"
+            "ℹ️ Telegram не запускает камеру терминала напрямую.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Лицо зарегистрировано",callback_data=f"controlface:confirm:{dahua_id}")],
+                [InlineKeyboardButton("📱 Отправить фото через Telegram",callback_data=f"controlface:telegram:{dahua_id}")]
+            ]))
+    if action=="confirm":
+        return await create_control_approval(update,ctx,dahua_id)
+    ctx.user_data.clear()
+    ctx.user_data["await_face_photo"]=True
+    ctx.user_data["control_face_target"]=dahua_id
+    await q.edit_message_text("📱 Отправьте ОДНО фото лица сотрудника. Лицо по центру, один человек, хорошее освещение.")
+
+async def create_control_approval(update,ctx,dahua_id):
+    c=db()
+    e=c.execute("SELECT * FROM employees WHERE dahua_id=? AND active=0",(str(dahua_id),)).fetchone()
+    if not e:
+        c.close()
+        return False
+    c.execute("INSERT INTO employee_approval_requests(dahua_id,name,phone,created_by,created_at,status) VALUES(?,?,?,?,?,?)",
+              (str(dahua_id),e["name"],e["phone"],update.effective_user.id,now().isoformat(),"pending"))
+    req_id=c.execute("SELECT last_insert_rowid()").fetchone()[0]
+    c.commit(); c.close()
+    if ADMIN_ID:
+        tg_send(ADMIN_ID,
+            f"🆕 НОВЫЙ СОТРУДНИК — подтверждение владельца\\n\\n"
+            f"👤 {e['name']}\\n🆔 {e['internal_id'] or '—'}\\n📞 {e['phone'] or '—'}\\n"
+            f"🔢 Dahua ID: {e['dahua_id']}\\n\\n"
+            f"Добавил: менеджер/контроль (Telegram ID {update.effective_user.id})",
+            {"inline_keyboard":[[
+                {"text":"✅ Подтвердить","callback_data":f"newemp:ok:{req_id}"},
+                {"text":"❌ Отклонить","callback_data":f"newemp:no:{req_id}"}
+            ]]})
+    ctx.user_data.clear()
+    msg=update.callback_query
+    text=(
+        f"⏳ Face ID зарегистрирован.\\n\\n👤 {e['name']}\\n🆔 {e['internal_id'] or '—'}\\n\\n"
+        "Заявка отправлена владельцу. До подтверждения сотрудник не активен.")
+    if msg:
+        await msg.edit_message_text(text)
+    elif update.message:
+        await update.message.reply_text(text)
+    return True
+
+async def newemp_cb(update,ctx):
+    q=update.callback_query; await q.answer()
+    if role(q.from_user.id)!="owner":
+        return await q.edit_message_text("🔒 Только владелец.")
+    parts=q.data.split(":")
+    if len(parts)!=3:
+        return await q.edit_message_text("❌ Неверная заявка.")
+    act,req_id=parts[1],parts[2]
+    c=db()
+    req=c.execute("SELECT * FROM employee_approval_requests WHERE id=? AND status='pending'",(req_id,)).fetchone()
+    if not req:
+        c.close()
+        return await q.edit_message_text("Заявка уже обработана или не найдена.")
+    e=c.execute("SELECT * FROM employees WHERE dahua_id=?",(req["dahua_id"],)).fetchone()
+    if not e:
+        c.close()
+        return await q.edit_message_text("Сотрудник не найден.")
+    if act=="no":
+        c.execute("UPDATE employee_approval_requests SET status='denied' WHERE id=?",(req_id,))
+        c.execute("UPDATE employees SET active=0 WHERE dahua_id=?",(req["dahua_id"],))
+        c.commit(); c.close()
+        try: delete_dahua_user(req["dahua_id"])
+        except Exception: log.exception("Failed to remove denied employee from Dahua: %s",req["dahua_id"])
+        tg_send(req["created_by"],f"❌ Владелец отклонил регистрацию сотрудника: {req['name']}.")
+        return await q.edit_message_text(f"❌ Регистрация отклонена.\\n{req['name']}")
+    c.execute("UPDATE employees SET active=1,role='employee' WHERE dahua_id=?",(req["dahua_id"],))
+    c.execute("UPDATE employee_approval_requests SET status='approved' WHERE id=?",(req_id,))
+    c.commit(); c.close()
+    tg_send(req["created_by"],f"✅ Владелец подтвердил нового сотрудника: {req['name']}.\\nСотрудник активирован.")
+    await q.edit_message_text(f"✅ Новый сотрудник подтверждён.\\n\\n👤 {req['name']}\\n🆔 {e['internal_id'] or '—'}\\n\\nСотрудник активирован. Telegram-доступ сотрудника можно выдать через обычный запрос доступа.")
+
 
 async def employee_management(update,ctx):
     if role(update.effective_user.id)!="owner": return
@@ -953,6 +1116,7 @@ async def send_employee_month_report(message,year,month):
             "FROM employees e "
             "LEFT JOIN attendance a ON a.user_id=e.dahua_id "
             "AND a.event_time>=? AND a.event_time<? "
+            "WHERE e.active=1 "
             "GROUP BY e.dahua_id,e.name "
             "ORDER BY UPPER(e.name)",
             (start,end)
@@ -1401,7 +1565,7 @@ async def text_handler(update,ctx):
         "👥 Сейчас на работе","🍽 Столовая","📊 Отчёты","📱 QR столовой",
         "🔴 Опоздали","🍽 Сейчас на обеде","📊 Контроль","➕ Зарегистрировать сотрудника",
         "🍽 Сегодня","📅 1–15 число","📅 16–конец месяца","🗓 Весь месяц",
-        "👤 Мои записи","📋 Мой отчёт","🍽 Питание","➕ За счёт сотрудника","ℹ️ Помощь"
+        "👤 Мои записи","📋 Мой отчёт","🍽 Питание","➕ За свой счёт","ℹ️ Помощь"
     }
     if t=="↩️ Отмена":
         ctx.user_data.clear()
@@ -1428,7 +1592,7 @@ async def text_handler(update,ctx):
     if t=="📊 Отчёты": return await report_menu(update,ctx)
     if t=="🍽 Столовая": return await canteen(update,ctx)
     if t=="🍽 Питание": return await meal_menu(update,ctx)
-    if t=="➕ За счёт сотрудника": return await extra_meal_request(update,ctx)
+    if t=="➕ За свой счёт": return await extra_meal_request(update,ctx)
     if t=="🍽 Сегодня":
         if r not in ("owner","canteen"): return
         return await canteen(update,ctx)
