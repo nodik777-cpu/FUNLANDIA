@@ -263,11 +263,7 @@ async def reg_photo(m:Message,state:FSMContext):
                 (dahua_user_id,full_name,active,is_test,hired_at,registration_status,registered_at)
                 VALUES(%s,%s,true,false,%s,'ACTIVE',NOW()) RETURNING id""",(uid,name,date.today()))
             eid=cur.fetchone()[0]
-            cur.execute("""INSERT INTO telegram_users(telegram_id,role,employee_id,active,phone)
-                VALUES(%s,'EMPLOYEE',%s,true,%s)
-                ON CONFLICT(telegram_id) DO UPDATE SET employee_id=EXCLUDED.employee_id,
-                role='EMPLOYEE',active=true,phone=EXCLUDED.phone,updated_at=NOW()""",
-                (m.from_user.id,eid,d["phone"]))
+            # Owner registration creates the employee but never changes the owner's Telegram role.
         await state.clear()
         await m.answer(f"✅ <b>СОТРУДНИК АКТИВИРОВАН</b>\n\n👤 {name}\n🆔 Dahua ID: {uid}\n📱 {d['phone']}\n🎂 {d['age']}\n⚧ {d['gender']}",reply_markup=EMP_KB)
         return
