@@ -279,8 +279,9 @@ async def reg_photo(m:Message,state:FSMContext):
     if d["owner_mode"]:
         with conn() as c, c.cursor() as cur:
             cur.execute("""INSERT INTO employees
-                (dahua_user_id,full_name,active,is_test,hired_at,registration_status,registered_at)
-                VALUES(%s,%s,true,false,%s,'ACTIVE',NOW()) RETURNING id""",(uid,name,date.today(),d["phone"],d["age"],d["gender"]))
+                (dahua_user_id,full_name,active,is_test,hired_at,registration_status,registered_at,phone,age,gender)
+                VALUES(%s,%s,true,false,%s,'ACTIVE',NOW(),%s,%s,%s) RETURNING id""",
+                (uid,name,date.today(),d["phone"],d["age"],d["gender"]))
             eid=cur.fetchone()[0]
             # Owner registration creates the employee but never changes the owner's Telegram role.
         await state.clear()
