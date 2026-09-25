@@ -78,6 +78,7 @@ def kb(rows):
 OWNER_KB=kb([["📊 Контроль","👥 Сотрудники"],["🍽 Столовая","📑 Отчёты"],["⚙️ Настройки","📱 QR столовой"]])
 MANAGER_KB=kb([["👥 Сейчас на работе"],["🍽 Сейчас на обеде"],["⏰ Опоздавшие","🚪 Ранний уход"],["➕ Зарегистрировать сотрудника"]])
 CAFE_KB=kb([["🍲 Сегодня"],["📅 1–15","📅 16–конец месяца"]])
+CAFE_EMP_KB=kb([["🍲 Обед","🍽 Ужин"],["🎫 Доп. талон"],["⬅️ Назад"]])
 EMP_KB=kb([["📊 Моя посещаемость"],["🍽 Моя столовая"],["🎫 Мои дополнительные талоны"]])
 REGISTER_KB=kb([["📝 Зарегистрироваться"]])
 BACK_KB=kb([["⬅️ Назад"]])
@@ -156,10 +157,25 @@ def dahua_face_remove(uid):
         auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
         verify=False,timeout=15)
 
+def ensure_bot_schema():
+    with conn() as c, c.cursor() as cur:
+        cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone TEXT")
+        cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS age INTEGER")
+        cur.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS gender TEXT")
+        cur.execute("ALTER TABLE employee_registration_requests ADD COLUMN IF NOT EXISTS age INTEGER")
+        cur.execute("ALTER TABLE employee_registration_requests ADD COLUMN IF NOT EXISTS gender TEXT")
+
 def next_dahua_id():
     a=fetch("SELECT COALESCE(MAX(dahua_user_id),0) mx FROM employees",one=True)["mx"]
     b=fetch("SELECT COALESCE(MAX(dahua_user_id),0) mx FROM employee_registration_requests",one=True)["mx"]
     return max(int(a or 0),int(b or 0))+1
+
+async def send_cafeteria_entry(m:Message):
+    u=user(m.from_user.id)
+    if not u or not u["employee_id"] or u["role"]!="EMPLOYEE" or u["registration_status"]!="ACTIVE":
+        await m.answer("❌ Столовая доступна только зарегистрированным активным сотрудникам.")
+        return
+    await m.answer("🍽 <b>СТОЛОВАЯ</b>\n\nВыберите питание:",reply_markup=CAFE_EMP_KB)
 
 async def home(m):
     u=user(m.from_user.id)
@@ -176,6 +192,9 @@ async def home(m):
 @dp.message(CommandStart())
 async def start(m:Message,state:FSMContext):
     await state.clear()
+    if (m.text or "").strip().startswith("/start cafeteria"):
+        await send_cafeteria_entry(m)
+        return
     await home(m)
 
 @dp.message(Command("menu"))
@@ -261,19 +280,19 @@ async def reg_photo(m:Message,state:FSMContext):
         with conn() as c, c.cursor() as cur:
             cur.execute("""INSERT INTO employees
                 (dahua_user_id,full_name,active,is_test,hired_at,registration_status,registered_at)
-                VALUES(%s,%s,true,false,%s,'ACTIVE',NOW()) RETURNING id""",(uid,name,date.today()))
+                VALUES(%s,%s,true,false,%s,'ACTIVE',NOW()) RETURNING id""",(uid,name,date.today(),d["phone"],d["age"],d["gender"]))
             eid=cur.fetchone()[0]
             # Owner registration creates the employee but never changes the owner's Telegram role.
         await state.clear()
-        await m.answer(f"✅ <b>СОТРУДНИК АКТИВИРОВАН</b>\n\n👤 {name}\n🆔 Dahua ID: {uid}\n📱 {d['phone']}\n🎂 {d['age']}\n⚧ {d['gender']}",reply_markup=EMP_KB)
+        await m.answer(f"✅ <b>СОТРУДНИК АКТИВИРОВАН</b>\n\n👤 {name}\n🆔 Dahua ID: {uid}\n📱 {d['phone']}\n🎂 {d['age']}\n⚧ {d['gender']}",reply_markup=OWNER_KB)
         return
 
     claimed=None if d["manager_mode"] else m.from_user.id
     creator=m.from_user.id
     run("""INSERT INTO employee_registration_requests
-        (full_name,dahua_user_id,phone,claimed_telegram_id,created_by_telegram_id,status)
-        VALUES(%s,%s,%s,%s,%s,'WAITING_APPROVAL')""",
-        (name,uid,d["phone"],claimed,creator))
+        (full_name,dahua_user_id,phone,claimed_telegram_id,created_by_telegram_id,status,age,gender)
+        VALUES(%s,%s,%s,%s,%s,'WAITING_APPROVAL',%s,%s)""",
+        (name,uid,d["phone"],claimed,creator,d["age"],d["gender"]))
     req=fetch("SELECT * FROM employee_registration_requests WHERE dahua_user_id=%s ORDER BY id DESC LIMIT 1",(uid,),True)
     await state.clear()
     await m.answer("⏳ Заявка отправлена владельцу на подтверждение.")
@@ -293,8 +312,8 @@ async def approve(c:CallbackQuery):
     if not r or r["status"]!="WAITING_APPROVAL": return await c.answer("Заявка уже обработана",show_alert=True)
     with conn() as dbx,dbx.cursor() as cur:
         cur.execute("""INSERT INTO employees
-            (dahua_user_id,full_name,active,is_test,hired_at,registration_status,registered_at)
-            VALUES(%s,%s,true,false,%s,'ACTIVE',NOW()) RETURNING id""",(r["dahua_user_id"],r["full_name"],date.today()))
+            (dahua_user_id,full_name,active,is_test,hired_at,registration_status,registered_at,phone,age,gender)
+            VALUES(%s,%s,true,false,%s,'ACTIVE',NOW(),%s,%s,%s) RETURNING id""",(r["dahua_user_id"],r["full_name"],date.today(),r.get("phone"),r.get("age"),r.get("gender")))
         eid=cur.fetchone()[0]
         cur.execute("UPDATE employee_registration_requests SET status='APPROVED',updated_at=NOW() WHERE id=%s",(rid,))
         if r["claimed_telegram_id"]:
@@ -488,7 +507,7 @@ async def my_cafe(m:Message):
                       COUNT(*) FILTER(WHERE meal_type='DINNER') dinner,
                       COUNT(*) FILTER(WHERE ticket_type='EXTRA') extra
                FROM meal_transactions WHERE employee_id=%s AND meal_date=%s AND status='ISSUED'""",(u["employee_id"],now().date()),True)
-    await m.answer(f"🍽 <b>МОЯ СТОЛОВАЯ</b>\n\n🍲 Обед: {r['lunch'] or 0}\n🍽 Ужин: {r['dinner'] or 0}\n🎫 Доп. талоны: {r['extra'] or 0}")
+    await m.answer(f"🍽 <b>МОЯ СТОЛОВАЯ</b>\n\n🍲 Обед: {r['lunch'] or 0}\n🍽 Ужин: {r['dinner'] or 0}\n🎫 Доп. талоны: {r['extra'] or 0}",reply_markup=CAFE_EMP_KB)
 
 @dp.message(F.text=="🎫 Мои дополнительные талоны")
 async def my_extra(m:Message):
@@ -498,6 +517,76 @@ async def my_extra(m:Message):
     r=fetch("""SELECT COUNT(*) c,COALESCE(SUM(price),0) s FROM meal_transactions
                WHERE employee_id=%s AND meal_date BETWEEN %s AND %s AND ticket_type='EXTRA' AND status='ISSUED'""",(u["employee_id"],a,b),True)
     await m.answer(f"🎫 <b>МОИ ДОПОЛНИТЕЛЬНЫЕ ТАЛОНЫ</b>\n\nКоличество: {r['c']}\nСумма: {int(r['s'] or 0):,} сум".replace(","," "))
+
+def employee_today_shift(employee_id):
+    r=fetch("""SELECT MIN(d.create_time) first_entry
+               FROM dahua_events d JOIN employees e ON e.dahua_user_id=d.user_id
+               WHERE e.id=%s AND d.status=1
+               AND (d.create_time AT TIME ZONE 'Asia/Tashkent')::date=%s""",
+            (employee_id,now().date()),True)
+    if not r or not r["first_entry"]: return None
+    return shift_for(r["first_entry"].astimezone(TZ))
+
+def employee_present(employee_id):
+    r=fetch("""SELECT 1 FROM dahua_events d JOIN employees e ON e.dahua_user_id=d.user_id
+               WHERE e.id=%s AND d.status=1
+               AND (d.create_time AT TIME ZONE 'Asia/Tashkent')::date=%s LIMIT 1""",
+            (employee_id,now().date()),True)
+    return bool(r)
+
+def meal_usage(employee_id):
+    return fetch("""SELECT COUNT(*) FILTER(WHERE ticket_type='STANDARD') standard,
+                           COUNT(*) FILTER(WHERE ticket_type='EXTRA') extra
+                    FROM meal_transactions
+                    WHERE employee_id=%s AND meal_date=%s AND status='ISSUED'""",
+                 (employee_id,now().date()),True)
+
+async def issue_standard(m:Message, meal_type:str):
+    u=user(m.from_user.id)
+    if not u or u["role"]!="EMPLOYEE" or not u["employee_id"] or u["registration_status"]!="ACTIVE":
+        return await m.answer("❌ Профиль не активирован.")
+    if not employee_present(u["employee_id"]):
+        return await m.answer("❌ Сегодня успешного Face ID ещё нет. Питание не доступно.")
+    code=employee_today_shift(u["employee_id"])
+    if not code: return await m.answer("❌ Смена сегодня не определена.")
+    limit=2 if code=="FIRST" else 1
+    if code=="SECOND" and meal_type!="DINNER":
+        return await m.answer("ℹ️ Для 2-й смены стандартное питание — только ужин.")
+    dup=fetch("""SELECT 1 FROM meal_transactions
+                 WHERE employee_id=%s AND meal_date=%s AND meal_type=%s
+                 AND ticket_type='STANDARD' AND status='ISSUED'""",
+              (u["employee_id"],now().date(),meal_type),True)
+    if dup: return await m.answer("❌ Этот талон уже выдан.")
+    used=meal_usage(u["employee_id"])["standard"] or 0
+    if used>=limit: return await m.answer("❌ Стандартные талоны на сегодня закончились. Можно оформить дополнительный талон.")
+    run("""INSERT INTO meal_transactions(employee_id,meal_date,meal_type,ticket_type,price,status,issued_by_telegram_id)
+           VALUES(%s,%s,%s,'STANDARD',0,'ISSUED',%s)""",
+        (u["employee_id"],now().date(),meal_type,m.from_user.id))
+    await m.answer(f"✅ {'Обед' if meal_type=='MEAL' else 'Ужин'} выдан.\nСмена: {code}\nОсталось стандартных: {limit-used-1}")
+
+@dp.message(F.text=="🍲 Обед")
+async def issue_lunch(m:Message): await issue_standard(m,"MEAL")
+
+@dp.message(F.text=="🍽 Ужин")
+async def issue_dinner(m:Message): await issue_standard(m,"DINNER")
+
+@dp.message(F.text=="🎫 Доп. талон")
+async def issue_extra(m:Message):
+    u=user(m.from_user.id)
+    if not u or u["role"]!="EMPLOYEE" or not u["employee_id"] or u["registration_status"]!="ACTIVE":
+        return await m.answer("❌ Профиль не активирован.")
+    if not employee_present(u["employee_id"]):
+        return await m.answer("❌ Сегодня успешного Face ID ещё нет.")
+    code=employee_today_shift(u["employee_id"])
+    if not code: return await m.answer("❌ Смена сегодня не определена.")
+    limit=2 if code=="FIRST" else 1
+    used=meal_usage(u["employee_id"])["standard"] or 0
+    if used<limit:
+        return await m.answer(f"ℹ️ Сначала используются стандартные талоны. Осталось: {limit-used}.")
+    run("""INSERT INTO meal_transactions(employee_id,meal_date,meal_type,ticket_type,price,status,issued_by_telegram_id)
+           VALUES(%s,%s,'OTHER','EXTRA',%s,'ISSUED',%s)""",
+        (u["employee_id"],now().date(),EXTRA_PRICE,m.from_user.id))
+    await m.answer("🎫 Дополнительный талон выдан.\n💰 25 000 сум.")
 
 @dp.message(F.text=="🍽 Сейчас на обеде")
 async def manager_lunch(m:Message):
@@ -514,6 +603,7 @@ async def fallback(m:Message):
     await m.answer("Выберите пункт меню или /start.")
 
 async def main():
+    ensure_bot_schema()
     print("FUNLANDIA STAFF BOT STARTED")
     await dp.start_polling(bot)
 
