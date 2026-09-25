@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import requests
+import requests as http_requests
 from requests.auth import HTTPDigestAuth
 from dotenv import load_dotenv
 
@@ -145,14 +145,14 @@ def period(which):
 def dahua_face_add(uid,name,image_bytes):
     b64=base64.b64encode(image_bytes).decode()
     payload={"UserID":str(uid),"Info":{"UserName":name,"PhotoData":[b64]}}
-    r=requests.post(
+    r=http_requests.post(
         f"https://{DAHUA_HOST}/cgi-bin/FaceInfoManager.cgi?action=add",
         auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
         json=payload,verify=False,timeout=30)
     return r
 
 def dahua_face_remove(uid):
-    return requests.get(
+    return http_requests.get(
         f"https://{DAHUA_HOST}/cgi-bin/FaceInfoManager.cgi?action=remove&UserID={uid}",
         auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
         verify=False,timeout=15)
@@ -257,7 +257,26 @@ async def reg_gender(m:Message,state:FSMContext):
     if g not in ("М","Ж","M","F"): return await m.answer("Введите М или Ж.")
     await state.update_data(gender="М" if g in ("М","M") else "Ж")
     await state.set_state(Reg.photo)
-    await m.answer("📸 Отправьте фотографию лица одним фото.")
+    await m.answer(
+        "🪪 <b>FACE ID</b>\n\n"
+        "Выберите способ регистрации лица:",
+        reply_markup=kb([["📷 Сфотографироваться на Face ID"],["📸 Отправить фото"],["⬅️ Назад"]])
+    )
+
+@dp.message(StateFilter(Reg.photo),F.text=="📷 Сфотографироваться на Face ID")
+async def face_terminal(m:Message,state:FSMContext):
+    await m.answer(
+        "🪪 <b>Регистрация через терминал Dahua</b>\n\n"
+        "1. Подойдите к терминалу Face ID.\n"
+        "2. На терминале откройте регистрацию лица нового сотрудника.\n"
+        "3. Выполните захват лица камерой терминала.\n\n"
+        "⚠️ В официальном HTTP API, который мы используем для этой модели, "
+        "описан API добавления лица через PhotoData/FaceData, но отдельная CGI-команда "
+        "«запустить камеру терминала для удалённой регистрации» в документации не указана. "
+        "Поэтому я не буду выдавать несуществующую команду за рабочую.\n\n"
+        "Для автоматической регистрации прямо из Telegram используйте «📸 Отправить фото».",
+        reply_markup=kb([["📸 Отправить фото"],["⬅️ Назад"]])
+    )
 
 @dp.message(StateFilter(Reg.photo),F.photo)
 async def reg_photo(m:Message,state:FSMContext):
@@ -401,7 +420,7 @@ async def employee_list(m:Message):
     await m.answer("👥 <b>СПИСОК</b>\n\n"+"\n".join(f"• {r['full_name']} — Dahua {r['dahua_user_id']} — {'ACTIVE' if r['active'] else 'FIRED'}" for r in rows))
 
 @dp.message(F.text=="⏳ Заявки")
-async def requests(m:Message):
+async def registration_requests(m:Message):
     if m.from_user.id!=OWNER_ID:return
     rows=fetch("SELECT * FROM employee_registration_requests WHERE status='WAITING_APPROVAL' ORDER BY id")
     if not rows:return await m.answer("⏳ Заявок нет.")
