@@ -284,13 +284,33 @@ async def reg_photo(m:Message,state:FSMContext):
     name=f"{d['surname']} {d['first']} {d['patronymic']}".strip()
     uid=next_dahua_id()
     try:
-        tgfile=await bot.get_file(m.photo[-1].file_id)
+        # Dahua limits each PhotoData string to 200k characters.
+        # Base64 expands the JPEG by about 4/3, so keep the downloaded
+        # Telegram photo safely below 150 KB. Try the largest Telegram
+        # variant first, then fall back to smaller variants.
         import io
-        buf=io.BytesIO()
-        await bot.download_file(tgfile.file_path,buf)
-        resp=dahua_face_add(uid,name,buf.getvalue())
-        if not resp.ok or "error" in resp.text.lower():
-            await m.answer(f"❌ Dahua не принял фотографию. HTTP {resp.status_code}\n{resp.text[:400]}")
+        selected=None
+        selected_size=None
+        for photo in reversed(m.photo):
+            tgfile=await bot.get_file(photo.file_id)
+            buf=io.BytesIO()
+            await bot.download_file(tgfile.file_path,buf)
+            data=buf.getvalue()
+            if len(data) <= 145000:
+                selected=data
+                selected_size=photo
+                break
+        if selected is None:
+            await m.answer("❌ Фотография слишком большая для API Dahua. Отправьте фото меньшего размера.")
+            return
+
+        resp=dahua_face_add(uid,name,selected)
+        if not resp.ok or "error" in resp.text.lower() or "bad request" in resp.text.lower():
+            await m.answer(
+                f"❌ Dahua не принял фотографию. HTTP {resp.status_code}\n"
+                f"Размер фото: {len(selected)} байт\n"
+                f"Ответ Dahua: {resp.text[:500]}"
+            )
             return
     except Exception as e:
         await m.answer(f"❌ Ошибка Dahua: {e}"); return
