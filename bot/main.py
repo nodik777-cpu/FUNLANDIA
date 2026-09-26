@@ -142,6 +142,30 @@ def period(which):
     if which=="second": return first.replace(day=16),last
     return first,last
 
+def dahua_access_user_add(uid,name):
+    payload={
+        "UserList":[{
+            "UserID":str(uid),
+            "UserName":name,
+            "UserType":0,
+            "IsFirstEnter":False,
+            "UserStatus":0,
+            "Authority":2,
+            "Doors":[0],
+            "TimeSections":[1]
+        }]
+    }
+    return http_requests.post(
+        f"https://{DAHUA_HOST}/cgi-bin/AccessUser.cgi?action=insertMulti",
+        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
+        json=payload,verify=False,timeout=20)
+
+def dahua_access_user_remove(uid):
+    return http_requests.get(
+        f"https://{DAHUA_HOST}/cgi-bin/AccessUser.cgi?action=removeMulti&UserIDList[0]={uid}",
+        auth=HTTPDigestAuth(DAHUA_USER,DAHUA_PASSWORD),
+        verify=False,timeout=15)
+
 def dahua_face_add(uid,name,image_bytes):
     b64=base64.b64encode(image_bytes).decode()
     payload={"UserID":str(uid),"Info":{"UserName":name,"PhotoData":[b64]}}
@@ -304,8 +328,22 @@ async def reg_photo(m:Message,state:FSMContext):
             await m.answer("❌ Фотография слишком большая для API Dahua. Отправьте фото меньшего размера.")
             return
 
+        # On this access-control model the face record is attached to an
+        # AccessUser account. Create the person first, then attach the face photo.
+        user_resp=dahua_access_user_add(uid,name)
+        if not user_resp.ok or user_resp.text.strip().lower() not in ("ok","{}"):
+            await m.answer(
+                f"❌ Dahua не создал учётную запись сотрудника. HTTP {user_resp.status_code}\n"
+                f"Ответ Dahua: {user_resp.text[:500]}"
+            )
+            return
+
         resp=dahua_face_add(uid,name,selected)
         if not resp.ok or "error" in resp.text.lower() or "bad request" in resp.text.lower():
+            try:
+                dahua_access_user_remove(uid)
+            except Exception:
+                pass
             await m.answer(
                 f"❌ Dahua не принял фотографию. HTTP {resp.status_code}\n"
                 f"Размер фото: {len(selected)} байт\n"
@@ -374,8 +412,14 @@ async def reject(c:CallbackQuery):
     r=fetch("SELECT * FROM employee_registration_requests WHERE id=%s",(rid,),True)
     if not r or r["status"]!="WAITING_APPROVAL": return await c.answer("Заявка уже обработана",show_alert=True)
     run("UPDATE employee_registration_requests SET status='REJECTED',updated_at=NOW() WHERE id=%s",(rid,))
-    try: dahua_face_remove(r["dahua_user_id"])
-    except: pass
+    try:
+        dahua_face_remove(r["dahua_user_id"])
+    except:
+        pass
+    try:
+        dahua_access_user_remove(r["dahua_user_id"])
+    except:
+        pass
     await c.message.edit_text(c.message.text+"\n\n❌ <b>ОТКЛОНЕНО</b>"); await c.answer("Отклонено")
     if r["claimed_telegram_id"]:
         await bot.send_message(r["claimed_telegram_id"],"❌ Ваша заявка отклонена.",reply_markup=REGISTER_KB)
@@ -458,8 +502,14 @@ async def fire_do(m:Message,state:FSMContext):
     if m.from_user.id!=OWNER_ID:return
     r=fetch("SELECT * FROM employees WHERE full_name=%s AND active=true",(m.text.strip(),),True)
     if not r:return await m.answer("Не найдено. Введите точное ФИО.")
-    try: dahua_face_remove(r["dahua_user_id"])
-    except: pass
+    try:
+        dahua_face_remove(r["dahua_user_id"])
+    except:
+        pass
+    try:
+        dahua_access_user_remove(r["dahua_user_id"])
+    except:
+        pass
     run("UPDATE employees SET active=false,registration_status='FIRED',fired_at=NOW() WHERE id=%s",(r["id"],))
     run("UPDATE telegram_users SET active=false WHERE employee_id=%s",(r["id"],))
     await state.clear(); await m.answer(f"🚫 {r['full_name']} уволен.",reply_markup=EMPLOYEES_KB)
