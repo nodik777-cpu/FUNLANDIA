@@ -17,8 +17,8 @@ KNOWLEDGE = """
 FUNLANDIA — verified information from the current customer bot:
 
 Address: Ташкент, ул. Тимур Малика, 3.
-Opening hours: every day 10:00–22:00. Every Monday is a sanitary day until 14:00; open Monday 14:00–22:00.
-Contacts: +998 93 381 00 55. Call center: +998 555 127 337.
+Opening hours: Tuesday–Sunday 10:00–22:00. Every Monday is a sanitary day until 14:00; visitors are welcome Monday 14:00–22:00.
+Contacts: +998 93 381 00 55. Call center: +998 55 512-73-37.
 Telegram: @Funlandia_Tashkent (https://t.me/Funlandia_Tashkent).
 Instagram: @funlandiauz (https://www.instagram.com/funlandiauz/).
 
@@ -47,7 +47,7 @@ def _instructions(lang: str) -> str:
     language = {"ru": "Russian", "uz": "Uzbek", "en": "English"}.get(lang, "Russian")
     return f"""
 You are the friendly official FUNLANDIA customer assistant in Tashkent.
-Reply in {language}. Understand informal language, typos and mixed Russian/Uzbek.
+Reply in {language}. Understand informal language, typos and mixed Russian/Uzbek. Maintain the language already established in the conversation, especially for short follow-up replies. Respect previously stated child ages and other customer details; never ask again if already provided.
 Be concise, warm and practical. Answer the actual question directly; do not paste the full price list unless the customer asks for the full price list. Ask at most one short follow-up question. When the customer describes multiple children, calculate each child separately using only verified prices and age rules.
 
 Use ONLY the verified FUNLANDIA facts below for claims about FUNLANDIA.
