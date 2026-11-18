@@ -177,7 +177,7 @@ async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Friendly auto-secretary: greet first, then answer; unknown questions go to admin."""
+    """Friendly customer assistant: greet first, then answer with verified facts or AI."""
     lang = context.user_data.get("lang", "ru")
     raw = (update.effective_message.text or "").strip()
     question = raw.lower()
@@ -198,7 +198,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "👋 Здравствуйте! Добро пожаловать в FUNLANDIA!\n\n"
                 "😊 Чем могу помочь?\n\n"
                 "Я могу рассказать о ценах, развлечениях, возрасте детей, "
-                "дне рождения, свободных зонах, адресе и режиме работы."
+                "дне рождения, развлечениях, адресе и режиме работы."
             )
             return
 
@@ -288,6 +288,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
         name = user.full_name or "Без имени"
         username = user.username or "без username"
+        sent_to_admin = False
         if ADMIN_CHAT_ID:
             try:
                 await context.bot.send_message(
@@ -300,13 +301,21 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"❓ {raw}"
                     ),
                 )
+                sent_to_admin = True
             except Exception as exc:
                 print(f"AI admin notification error: {exc}")
-        reply = {
-            "ru": "Этот вопрос лучше уточнить у администратора. Я передал ему ваше сообщение.",
-            "uz": "Bu savolni administrator bilan aniqlashtirish kerak. Xabaringizni unga yubordim.",
-            "en": "An administrator should confirm this. I have forwarded your message.",
-        }
+        if sent_to_admin:
+            reply = {
+                "ru": "Этот вопрос лучше уточнить у администратора. Я передал ему ваше сообщение.",
+                "uz": "Bu savolni administrator bilan aniqlashtirish kerak. Xabaringizni unga yubordim.",
+                "en": "An administrator should confirm this. I have forwarded your message.",
+            }
+        else:
+            reply = {
+                "ru": "Этот вопрос нужно уточнить у администратора. Позвоните, пожалуйста: +998 555 127 337.",
+                "uz": "Bu savolni administrator bilan aniqlashtirish kerak. Iltimos, qo‘ng‘iroq qiling: +998 555 127 337.",
+                "en": "An administrator needs to confirm this. Please call +998 555 127 337.",
+            }
         await update.effective_message.reply_text(reply.get(lang, reply["ru"]))
         return
 
