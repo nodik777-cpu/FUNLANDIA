@@ -104,43 +104,32 @@ def detect_message_language(text: str, fallback: str = "ru") -> str:
 
 
 def menu(lang="ru"):
-    # Telegram controls the actual keyboard-button colors; this layout uses
-    # bright carnival emoji and a clear two-column customer menu.
+    # Updated carnival-style main menu: contacts are grouped in one section.
     if lang == "uz":
         rows = [
             ["💬 Savol berish", "📸 FOTO-GID"],
             ["🎂 Tug‘ilgan kunni bron qilish", "🎟️ Narxlar"],
             ["🎠 Ko‘ngilochar", "🎁 Aksiya oyi"],
-            ["📍 Manzil", "🗺️ Xaritadagi joylashuv"],
-            ["🕐 Ish vaqti"],
-            ["☎️ Kontakt", "📸 Instagram"],
-            ["📱 Telegram", "🇷🇺 Русский"],
-            ["🇬🇧 English"],
+            ["🕐 Ish vaqti", "📍 Kontaktlar"],
+            ["🇷🇺 Русский", "🇬🇧 English"],
         ]
     elif lang == "en":
         rows = [
             ["💬 Ask a question", "📸 PHOTO GUIDE"],
             ["🎂 Book a Birthday", "🎟️ Prices"],
             ["🎠 Attractions", "🎁 Promotion"],
-            ["📍 Address", "🗺️ Map location"],
-            ["🕐 Opening Hours"],
-            ["☎️ Contact", "📸 Instagram"],
-            ["📱 Telegram", "🇷🇺 Русский"],
-            ["🇺🇿 O‘zbekcha"],
+            ["🕐 Opening Hours", "📍 Contacts"],
+            ["🇷🇺 Русский", "🇺🇿 O‘zbekcha"],
         ]
     else:
         rows = [
             ["💬 Задать вопрос", "📸 ФОТО-ГИД"],
             ["🎂 Забронировать день рождения", "🎟️ Цены"],
             ["🎠 Развлечения", "🎁 Акция месяца"],
-            ["📍 Адрес", "🗺️ Локация на карте"],
-            ["🕐 Время работы"],
-            ["☎️ Контакт", "📸 Instagram"],
-            ["📱 Telegram", "🇺🇿 O‘zbekcha"],
-            ["🇬🇧 English"],
+            ["🕐 Время работы", "📍 Контакты"],
+            ["🇺🇿 O‘zbekcha", "🇬🇧 English"],
         ]
     return ReplyKeyboardMarkup(two_col(rows), resize_keyboard=True)
-
 
 def funlandia_menu(lang="ru"):
     if lang == "uz":
@@ -325,9 +314,48 @@ async def hours(update: Update, lang):
 
 
 async def contacts(update: Update, lang):
-    texts={"ru":"📞 КОНТАКТЫ FUNLANDIA\n\n📞 Контакт: +998933810055\n☎️ Колл-центр: +998 55 512-73-37\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz", "uz":"📞 FUNLANDIA ALOQA\n\n📞 Kontakt: +998933810055\n☎️ Call-markaz: +998 55 512-73-37\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz", "en":"📞 FUNLANDIA CONTACTS\n\n📞 Contact: +998933810055\n☎️ Call center: +998 55 512-73-37\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz"}
-    await update.effective_message.reply_text(texts.get(lang,texts["ru"]), reply_markup=menu(lang))
-
+    texts = {
+        "ru": (
+            "📍 КОНТАКТЫ FUNLANDIA\n\n"
+            "📞 Телефон: +998 93 381 00 55\n"
+            "☎️ Колл-центр: +998 55 512-73-37\n\n"
+            "📱 Telegram: @Funlandia_Tashkent\n"
+            "📸 Instagram: @funlandiauz\n\n"
+            f"📍 Адрес: {ADDRESS}"
+        ),
+        "uz": (
+            "📍 FUNLANDIA ALOQA\n\n"
+            "📞 Telefon: +998 93 381 00 55\n"
+            "☎️ Call-markaz: +998 55 512-73-37\n\n"
+            "📱 Telegram: @Funlandia_Tashkent\n"
+            "📸 Instagram: @funlandiauz\n\n"
+            f"📍 Manzil: {ADDRESS}"
+        ),
+        "en": (
+            "📍 FUNLANDIA CONTACTS\n\n"
+            "📞 Phone: +998 93 381 00 55\n"
+            "☎️ Call center: +998 55 512-73-37\n\n"
+            "📱 Telegram: @Funlandia_Tashkent\n"
+            "📸 Instagram: @funlandiauz\n\n"
+            f"📍 Address: {ADDRESS}"
+        ),
+    }
+    buttons = [
+        [
+            InlineKeyboardButton("📱 Telegram", url=TELEGRAM),
+            InlineKeyboardButton("📸 Instagram", url=INSTAGRAM),
+        ],
+        [
+            InlineKeyboardButton(
+                {"ru": "🗺️ Открыть локацию на карте", "uz": "🗺️ Xaritada ochish", "en": "🗺️ Open map"}[lang],
+                url="https://yandex.uz/maps/org/funlandia/179053879477/?indoorLevel=1&ll=69.354446%2C41.352979&mode=search&sctx=ZAAAAAgBEAAaKAoSCcueBDbnUVFAERGPxMvTp0RAEhIJ%2B1xtxf6y0D8Rb0p5rYTuwD8iBgABAgMEBSgKOABAnp8GSAFqAnV6nQHNzMw9oAEAqAEAvQHPmqmMggIJZnVubGFuZGlhigIAkgIMZGVza3RvcC1tYXBz&sll=69.354446%2C41.352979&sspn=0.005647%2C0.002861&text=funlandia&utm_source=share&z=17",
+            ),
+        ],
+    ]
+    await update.effective_message.reply_text(
+        texts.get(lang, texts["ru"]),
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
 
 async def direct_contact(update: Update, lang, kind):
     if kind == "call":
@@ -610,7 +638,7 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await simple(update, lang, "address")
     if text in ("🕐 Время работы", "🕐 Ish vaqti", "🕐 Opening Hours"):
         return await hours(update, lang)
-    if text in ("📞 Контакт", "📞 Kontakt", "📞 Контакты", "📞 Aloqa", "📞 Contact"):
+    if text in ("📍 Контакты", "📍 Kontaktlar", "📍 Contacts", "📞 Контакт", "📞 Kontakt", "📞 Контакты", "📞 Aloqa", "📞 Contact"):
         return await contacts(update, lang)
     if text in ("📸 Instagram",):
         return await simple(update, lang, "instagram")
