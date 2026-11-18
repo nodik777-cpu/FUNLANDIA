@@ -84,6 +84,25 @@ def normalize_photo_list(value):
 def is_admin(update: Update):
     return bool(ADMIN_CHAT_ID) and str(update.effective_chat.id) == str(ADMIN_CHAT_ID)
 
+def detect_message_language(text: str, fallback: str = "ru") -> str:
+    """Lightweight language detection for RU, Uzbek (Latin/Cyrillic), and EN."""
+    import re
+    value = (text or "").lower()
+    if re.search(r"[а-яё]", value):
+        uz_cyrillic = ("салом", "рахмат", "нархи", "қанча", "болалар",
+                       "майдонча", "батут", "иш вақти", "манзил", "борми")
+        return "uz" if any(token in value for token in uz_cyrillic) else "ru"
+    uzbek_words = (
+        "salom", "assalomu", "rahmat", "narxi", "narxlar", "qancha",
+        "bolalar", "maydoncha", "batut", "ish vaqti", "manzil",
+        "bormi", "necha", "so'm", "so‘m", "tug'ilgan", "tug‘ilgan",
+        "iltimos", "mumkinmi", "qayerda", "ochiqmisiz"
+    )
+    if any(token in value for token in uzbek_words):
+        return "uz"
+    return fallback if fallback in ("ru", "uz", "en") else "en"
+
+
 def menu(lang="ru"):
     if lang == "uz":
         rows = [
@@ -178,36 +197,14 @@ async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Friendly customer assistant: greet first, then answer with verified facts or AI."""
-    lang = context.user_data.get("lang", "ru")
     raw = (update.effective_message.text or "").strip()
+    fallback_lang = context.user_data.get("lang", "ru")
+    telegram_lang = getattr(update.effective_user, "language_code", None)
+    if fallback_lang == "ru" and telegram_lang in ("uz", "en"):
+        fallback_lang = telegram_lang
+    lang = detect_message_language(raw, fallback_lang)
+    context.user_data["lang"] = lang
     question = raw.lower()
-
-    # First contact: always greet and invite the client to ask a question.
-    if not context.user_data.get("secretary_greeted"):
-        context.user_data["secretary_greeted"] = True
-
-        greetings = (
-            "привет", "здравствуйте", "здравствуй", "добрый день",
-            "добрый вечер", "доброе утро", "салом", "салом алейкум",
-            "ассалому алейкум", "алейкум ассалом", "hello", "hi",
-            "salom", "assalomu alaykum"
-        )
-
-        if any(word in question for word in greetings):
-            await update.effective_message.reply_text(
-                "👋 Здравствуйте! Добро пожаловать в FUNLANDIA!\n\n"
-                "😊 Чем могу помочь?\n\n"
-                "Я могу рассказать о ценах, развлечениях, возрасте детей, "
-                "дне рождения, развлечениях, адресе и режиме работы."
-            )
-            return
-
-        # Even if the first message is a question rather than a greeting,
-        # introduce the secretary before answering it.
-        await update.effective_message.reply_text(
-            "👋 Здравствуйте! Добро пожаловать в FUNLANDIA!\n\n"
-            "😊 Чем могу помочь?"
-        )
 
     # Friendly greetings at any later point.
     greetings = (
@@ -217,11 +214,12 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "salom", "assalomu alaykum"
     )
     if any(word in question for word in greetings):
-        await update.effective_message.reply_text(
-            "👋 Здравствуйте! 😊 Чем могу помочь?"
-            if lang == "ru" else
-            "👋 Assalomu alaykum! 😊 Sizga qanday yordam bera olaman?"
-        )
+        greeting = {
+            "ru": "👋 Здравствуйте! 😊 Чем могу помочь?",
+            "uz": "👋 Assalomu alaykum! 😊 Sizga qanday yordam bera olaman?",
+            "en": "👋 Hello! 😊 How can I help you?",
+        }
+        await update.effective_message.reply_text(greeting[lang])
         return
 
     # All free-form customer questions go to Gemini. Only explicit menu buttons
