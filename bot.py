@@ -2,6 +2,7 @@ import os
 import json
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, BusinessConnectionHandler, filters
+from ai_assistant import answer_customer
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
@@ -87,7 +88,7 @@ def menu(lang="ru"):
     if lang == "uz":
         rows = [
             ["📸 FOTO-GID", "🎟️ Narxlar"],
-            ["🤖 Avto-kotib", "🎁 Aksiya oyi"],
+            ["🎁 Aksiya oyi"],
             ["🎠 Ko‘ngilochar", "📍 Manzil"],
             ["🎉 Tug‘ilgan kunni bron qilish", "🕐 Ish vaqti"],
             ["📞 Kontakt", "📸 Instagram"],
@@ -97,7 +98,7 @@ def menu(lang="ru"):
     elif lang == "en":
         rows = [
             ["📸 PHOTO GUIDE", "🎟️ Prices"],
-            ["🤖 Auto Secretary", "🎁 Promotion"],
+            ["🎁 Promotion"],
             ["🎠 Attractions", "📍 Address"],
             ["🎉 Book a Birthday", "🕐 Opening Hours"],
             ["📞 Contact", "📸 Instagram"],
@@ -107,7 +108,7 @@ def menu(lang="ru"):
     else:
         rows = [
             ["📸 ФОТО-ГИД", "🎟️ Цены"],
-            ["🤖 Авто-секретарь", "🎁 Акция месяца"],
+            ["🎁 Акция месяца"],
             ["🎠 Развлечения", "📍 Адрес"],
             ["🎉 Забронировать день рождения", "🕐 Время работы"],
             ["📞 Контакт", "📸 Instagram"],
@@ -174,15 +175,6 @@ async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Kerakli bo‘limni tanlang 👇",
         reply_markup=menu("uz")
     )
-
-async def secretary(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = context.user_data.get("lang", "ru")
-    texts = {
-      "ru": "🤖 АВТО-СЕКРЕТАРЬ FUNLANDIA\n\nЯ помогу вам узнать:\n💰 цены\n🎂 день рождения и бронирование\n🕐 график работы и санитарный день\n📍 адрес\n📞 телефон\n📸 Instagram\n📱 Telegram\n\nНапишите свой вопрос — я постараюсь сразу ответить.",
-      "uz": "🤖 AVTO-KOTIB FUNLANDIA\n\nMen sizga yordam beraman:\n💰 narxlar\n🎂 tug‘ilgan kun va bron\n🕐 ish vaqti va sanitariya kuni\n📍 manzil\n📞 telefon\n📸 Instagram\n📱 Telegram\n\nSavolingizni yozing — kerakli ma’lumotni beraman.",
-      "en": "🤖 FUNLANDIA AUTO SECRETARY\n\nI can help you with:\n💰 prices\n🎂 birthdays and bookings\n🕐 opening hours and sanitation day\n📍 address\n📞 phone\n📸 Instagram\n📱 Telegram\n\nWrite your question — I will try to answer right away."}
-    await update.effective_message.reply_text(texts.get(lang, texts["ru"]), reply_markup=menu(lang))
-
 
 async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Friendly auto-secretary: greet first, then answer; unknown questions go to admin."""
@@ -289,43 +281,53 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    # Do NOT send every first/unknown phrase straight to admin without context.
-    # Ask for clarification first; only escalate when the client confirms they
-    # need help with something the secretary cannot answer.
-    if not context.user_data.get("secretary_clarification_asked"):
-        context.user_data["secretary_clarification_asked"] = True
-        await update.effective_message.reply_text(
-            "😊 Конечно. Уточните, пожалуйста, что именно вас интересует?\n\n"
-            "Например: цены, день рождения, развлечения, возраст, адрес или время работы."
-        )
+    # Unknown questions are answered by the AI assistant using the verified
+    # FUNLANDIA facts in ai_assistant.py. Availability and booking confirmation
+    # are always escalated to a human administrator.
+    history = context.user_data.setdefault("ai_history", [])
+    answer, handoff = await answer_customer(raw, lang, history)
+
+    if handoff:
+        user = update.effective_user
+        name = user.full_name or "Без имени"
+        username = user.username or "без username"
+        if ADMIN_CHAT_ID:
+            try:
+                await context.bot.send_message(
+                    chat_id=ADMIN_CHAT_ID,
+                    text=(
+                        "📩 ВОПРОС КЛИЕНТА — НУЖЕН АДМИНИСТРАТОР\n\n"
+                        f"👤 {name}\n"
+                        f"📱 @{username}\n"
+                        f"🌐 Язык: {lang}\n\n"
+                        f"❓ {raw}"
+                    ),
+                )
+            except Exception as exc:
+                print(f"AI admin notification error: {exc}")
+        reply = {
+            "ru": "Этот вопрос лучше уточнить у администратора. Я передал ему ваше сообщение.",
+            "uz": "Bu savolni administrator bilan aniqlashtirish kerak. Xabaringizni unga yubordim.",
+            "en": "An administrator should confirm this. I have forwarded your message.",
+        }
+        await update.effective_message.reply_text(reply.get(lang, reply["ru"]))
         return
 
-    user = update.effective_user
-    name = user.full_name or "Без имени"
-    username = user.username or "без username"
+    if not answer:
+        fallback = {
+            "ru": "Извините, онлайн-консультант временно недоступен. Позвоните нам: +998 555 127 337.",
+            "uz": "Kechirasiz, onlayn maslahatchi vaqtincha ishlamayapti. Bizga qo‘ng‘iroq qiling: +998 555 127 337.",
+            "en": "Sorry, the online assistant is temporarily unavailable. Please call +998 555 127 337.",
+        }
+        await update.effective_message.reply_text(fallback.get(lang, fallback["ru"]))
+        return
 
-    if ADMIN_CHAT_ID:
-        try:
-            await context.bot.send_message(
-                chat_id=ADMIN_CHAT_ID,
-                text=(
-                    "🤖 ВОПРОС ОТ КЛИЕНТА\n\n"
-                    f"👤 {name}\n"
-                    f"📱 @{username}\n"
-                    f"🌐 Язык: {lang}\n\n"
-                    f"❓ {raw}"
-                )
-            )
-        except Exception as exc:
-            print(f"Secretary admin notification error: {exc}")
-
-    await update.effective_message.reply_text(
-        "Спасибо! Я передал ваш вопрос администратору FUNLANDIA. "
-        "С вами свяжутся."
-        if lang == "ru" else
-        "Rahmat! Savolingizni FUNLANDIA administratoriga yubordim. "
-        "Siz bilan bog‘lanishadi."
-    )
+    history.extend([
+        {"role": "user", "content": raw},
+        {"role": "assistant", "content": answer},
+    ])
+    del history[:-12]
+    await update.effective_message.reply_text(answer)
 
 async def prices(update: Update, lang):
     if lang == "uz":
@@ -603,9 +605,6 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text in ("🎁 Акция месяца", "🎁 Aksiya oyi", "🎁 Promotion"):
         return await september_promo(update, context, lang)
-
-    if text in ("🤖 Авто-секретарь", "🤖 Avto-kotib", "🤖 Auto Secretary"):
-        return await secretary(update, context)
 
     if text in ("🎟️ Цены", "🎟️ Narxlar", "🎟️ Prices"):
         return await prices(update, lang)
