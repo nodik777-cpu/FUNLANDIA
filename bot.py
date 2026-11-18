@@ -273,8 +273,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if "площад" in question or "playground" in question:
             await update.effective_message.reply_text(
-                "🛝 В текущем меню указано, что вход для детей от 1 до 16 лет платный. "
-                "Для уточнения других возрастных исключений передам вопрос администратору."
+                "🛝 Детям до 1 года — бесплатно. Детям от 1 года до 16 лет — вход платный."
             )
             return
 
@@ -337,11 +336,11 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def prices(update: Update, lang):
     if lang == "uz":
-        text = ("🎟️ FUNLANDIA NARXLARI\n\n🛝 BOLALAR ZONASI\n🏰 Labirintlar\n🎪 Puflanadigan batutlar\n🎢 Tepaliklar\n🎯 Pnevmatik to‘plar\n\n💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n\n👧👦 1 yoshdan 16 yoshgacha — kirish pullik.\n\n🤸 BATUT ZONASI\n💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n⚠️ 7 yoshdan boshlab, ota-ona yoki katta yoshli hamroh nazoratida.\n\n🎉 IKKALA ZONA — 120 000 so‘m\n♾️ Ikkala zonaga cheksiz kirish!")
+        text = ("🎟️ FUNLANDIA NARXLARI\n\n🛝 BOLALAR ZONASI\n🏰 Labirintlar\n🎪 Puflanadigan batutlar\n🎢 Tepaliklar\n🎯 Pnevmatik to‘plar\n\n💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n\n👶 1 yoshgacha bo‘lgan bolalar — bepul.\n👧👦 1 yoshdan 16 yoshgacha — kirish pullik.\n\n🤸 BATUT ZONASI\n💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n⚠️ 7 yoshdan boshlab, ota-ona yoki katta yoshli hamroh nazoratida.\n\n🎉 IKKALA ZONA — 120 000 so‘m\n♾️ Ikkala zonaga cheksiz kirish!")
     elif lang == "en":
-        text = ("🎟️ FUNLANDIA PRICES\n\n🛝 KIDS ZONE\n🏰 Labyrinths\n🎪 Inflatable trampolines\n🎢 Slides\n🎯 Air cannons\n\n💰 1 hour — 80,000 UZS\n💰 2 hours — 90,000 UZS\n♾️ Unlimited — 100,000 UZS\n\n👧👦 Children from 1 to 16 years — paid entry.\n\n🤸 TRAMPOLINE ZONE\n💰 1 hour — 80,000 UZS\n💰 2 hours — 90,000 UZS\n♾️ Unlimited — 100,000 UZS\n⚠️ From 7 years old, under parent/adult supervision.\n\n🎉 BOTH ZONES — 120,000 UZS\n♾️ Unlimited access to both zones!")
+        text = ("🎟️ FUNLANDIA PRICES\n\n🛝 KIDS ZONE\n🏰 Labyrinths\n🎪 Inflatable trampolines\n🎢 Slides\n🎯 Air cannons\n\n💰 1 hour — 80,000 UZS\n💰 2 hours — 90,000 UZS\n♾️ Unlimited — 100,000 UZS\n\n👶 Children under 1 year old — free entry.\n👧👦 Children from 1 to 16 years — paid entry.\n\n🤸 TRAMPOLINE ZONE\n💰 1 hour — 80,000 UZS\n💰 2 hours — 90,000 UZS\n♾️ Unlimited — 100,000 UZS\n⚠️ From 7 years old, under parent/adult supervision.\n\n🎉 BOTH ZONES — 120,000 UZS\n♾️ Unlimited access to both zones!")
     else:
-        text = ("🎟️ ЦЕНЫ FUNLANDIA\n\n🛝 ДЕТСКАЯ ЗОНА\n🏰 Лабиринты\n🎪 Надувные батуты\n🎢 Горки\n🎯 Пневмопушки\n\n💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n\n👧👦 Детям от 1 года до 16 лет — вход платный.\n\n🤸 БАТУТНАЯ ЗОНА\n💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n⚠️ С 7 лет, только под присмотром родителей или взрослого.\n\n🎉 ДВЕ ЗОНЫ — 120 000 сум\n♾️ Безлимитное посещение обеих зон!")
+        text = ("🎟️ ЦЕНЫ FUNLANDIA\n\n🛝 ДЕТСКАЯ ЗОНА\n🏰 Лабиринты\n🎪 Надувные батуты\n🎢 Горки\n🎯 Пневмопушки\n\n💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n\n👶 Детям до 1 года — бесплатно.\n👧👦 Детям от 1 года до 16 лет — вход платный.\n\n🤸 БАТУТНАЯ ЗОНА\n💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n⚠️ С 7 лет, только под присмотром родителей или взрослого.\n\n🎉 ДВЕ ЗОНЫ — 120 000 сум\n♾️ Безлимитное посещение обеих зон!")
     await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 
@@ -390,9 +389,9 @@ async def funlandia(update: Update, lang):
 async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang=context.user_data.get("lang","ru"); context.user_data["birthday_step"]=1; context.user_data["birthday"]={}
     texts={
-      "ru":"🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA!\n\n🎁 АКЦИЯ ДЛЯ ИМЕНИННИКА\n\nПразднование проходит в одной выбранной зоне:\n🛝 Детская площадка\n🤸 Батутная зона\n\n👧 5 детей — 450 000 сум\n👦 10 детей — 900 000 сум\n\n🍽️ ЗАКАЗ СТОЛА\n🪑 Стол на 3 часа — 200 000 сум\n➕ Дополнительное время — 50 000 сум за каждый час\n\n🪑 ВЫБОР ЗОНЫ ПОСАДКИ\n1️⃣ Зона 1\n2️⃣ Зона 2\n3️⃣ Зона 3\n\n💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\n\nЧтобы оставить заявку, напишите имя именинника:",
-      "uz":"🎂 FUNLANDIA'DA TUG‘ILGAN KUN!\n\n🎁 TUG‘ILGAN KUN EGASI UCHUN AKSIYA\n\nBayram bitta tanlangan zonada:\n🛝 Bolalar maydonchasi\n🤸 Batut zonasi\n\n👧 5 bola — 450 000 so‘m\n👦 10 bola — 900 000 so‘m\n\n🍽️ STOL BUYURTMA QILISH\n🪑 3 soatga stol — 200 000 so‘m\n➕ Qo‘shimcha vaqt — har bir soat uchun 50 000 so‘m\n\n🪑 O‘TIRISH ZONASINI TANLASH\n1️⃣ Zona 1\n2️⃣ Zona 2\n3️⃣ Zona 3\n\n💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\n\nAriza qoldirish uchun tug‘ilgan kun egasining ismini yozing:",
-      "en":"🎂 BIRTHDAY AT FUNLANDIA!\n\n🎁 BIRTHDAY CHILD SPECIAL OFFER\n\nThe celebration takes place in one selected zone:\n🛝 Kids Playground\n🤸 Trampoline Zone\n\n👧 5 children — 450,000 UZS\n👦 10 children — 900,000 UZS\n\n🍽️ TABLE BOOKING\n🪑 Table for 3 hours — 200,000 UZS\n➕ Extra time — 50,000 UZS per hour\n\n🪑 SEATING ZONE\n1️⃣ Zone 1\n2️⃣ Zone 2\n3️⃣ Zone 3\n\n💰 A minimum advance payment of 100,000 UZS is required to confirm the booking.\n\nTo submit a request, write the birthday child’s name:"}
+      "ru":"🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA!\n\n🎁 СКИДКА ДЛЯ ИМЕНИННИКА\n\nСкидка действует только на одну выбранную зону — на детскую площадку ИЛИ на батутную зону. Одновременно на обе зоны скидка не распространяется.\n🛝 Детская площадка\nИЛИ\n🤸 Батутная зона\n\n👧 5 детей — 450 000 сум\n👦 10 детей — 900 000 сум\n\n🍽️ ЗАКАЗ СТОЛА\n🪑 Стол на 3 часа — 200 000 сум\n➕ Дополнительное время — 50 000 сум за каждый час\n\n🪑 ВЫБОР ЗОНЫ ПОСАДКИ\n1️⃣ Зона 1\n2️⃣ Зона 2\n3️⃣ Зона 3\n\n💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\n\nЧтобы оставить заявку, напишите имя именинника:",
+      "uz":"🎂 FUNLANDIA'DA TUG‘ILGAN KUN!\n\n🎁 TUG‘ILGAN KUN EGASI UCHUN CHEGIRMA\n\nChegirma faqat bitta tanlangan zonaga amal qiladi — bolalar maydonchasi YOKI batut zonasi. Ikkala zonaga bir vaqtda chegirma berilmaydi.\n🛝 Bolalar maydonchasi\nYOKI\n🤸 Batut zonasi\n\n👧 5 bola — 450 000 so‘m\n👦 10 bola — 900 000 so‘m\n\n🍽️ STOL BUYURTMA QILISH\n🪑 3 soatga stol — 200 000 so‘m\n➕ Qo‘shimcha vaqt — har bir soat uchun 50 000 so‘m\n\n🪑 O‘TIRISH ZONASINI TANLASH\n1️⃣ Zona 1\n2️⃣ Zona 2\n3️⃣ Zona 3\n\n💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\n\nAriza qoldirish uchun tug‘ilgan kun egasining ismini yozing:",
+      "en":"🎂 BIRTHDAY AT FUNLANDIA!\n\n🎁 BIRTHDAY CHILD DISCOUNT\n\nThe discount applies to ONE selected zone only — the Kids Playground OR the Trampoline Zone. It does not apply to both zones at the same time.\n🛝 Kids Playground\nOR\n🤸 Trampoline Zone\n\n👧 5 children — 450,000 UZS\n👦 10 children — 900,000 UZS\n\n🍽️ TABLE BOOKING\n🪑 Table for 3 hours — 200,000 UZS\n➕ Extra time — 50,000 UZS per hour\n\n🪑 SEATING ZONE\n1️⃣ Zone 1\n2️⃣ Zone 2\n3️⃣ Zone 3\n\n💰 A minimum advance payment of 100,000 UZS is required to confirm the booking.\n\nTo submit a request, write the birthday child’s name:"}
     await update.effective_message.reply_text(texts[lang], reply_markup=menu(lang))
 
 
