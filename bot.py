@@ -8,7 +8,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
 
 ADMIN_PHONE = "+998 93 381 00 55"
-CALL_CENTER = "+998 555 127 337"
+CALL_CENTER = "+998 55 512-73-37"
 ADDRESS = "Ташкент, ул. Тимур Малика, 3"
 INSTAGRAM = "https://www.instagram.com/funlandiauz/"
 TELEGRAM = "https://t.me/Funlandia_Tashkent"
@@ -259,18 +259,18 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         else:
             reply = {
-                "ru": "Этот вопрос нужно уточнить у администратора. Позвоните, пожалуйста: +998 555 127 337.",
-                "uz": "Bu savolni administrator bilan aniqlashtirish kerak. Iltimos, qo‘ng‘iroq qiling: +998 555 127 337.",
-                "en": "An administrator needs to confirm this. Please call +998 555 127 337.",
+                "ru": "Этот вопрос нужно уточнить у администратора. Позвоните, пожалуйста: +998 55 512-73-37.",
+                "uz": "Bu savolni administrator bilan aniqlashtirish kerak. Iltimos, qo‘ng‘iroq qiling: +998 55 512-73-37.",
+                "en": "An administrator needs to confirm this. Please call +998 55 512-73-37.",
             }
         await update.effective_message.reply_text(reply.get(lang, reply["ru"]))
         return
 
     if not answer:
         fallback = {
-            "ru": "Извините, онлайн-консультант временно недоступен. Позвоните нам: +998 555 127 337.",
-            "uz": "Kechirasiz, onlayn maslahatchi vaqtincha ishlamayapti. Bizga qo‘ng‘iroq qiling: +998 555 127 337.",
-            "en": "Sorry, the online assistant is temporarily unavailable. Please call +998 555 127 337.",
+            "ru": "Извините, онлайн-консультант временно недоступен. Позвоните нам: +998 55 512-73-37.",
+            "uz": "Kechirasiz, onlayn maslahatchi vaqtincha ishlamayapti. Bizga qo‘ng‘iroq qiling: +998 55 512-73-37.",
+            "en": "Sorry, the online assistant is temporarily unavailable. Please call +998 55 512-73-37.",
         }
         await update.effective_message.reply_text(fallback.get(lang, fallback["ru"]))
         return
@@ -293,18 +293,18 @@ async def prices(update: Update, lang):
 
 
 async def hours(update: Update, lang):
-    texts={"ru":"🕐 ВРЕМЯ РАБОТЫ FUNLANDIA\n\n🗓 Каждый день: 10:00–22:00\n\n🧹 Каждый понедельник — санитарный день до 14:00.\n🎉 Ждём вас с 14:00 до 22:00!", "uz":"🕐 FUNLANDIA ISH VAQTI\n\n🗓 Har kuni: 10:00–22:00\n\n🧹 Har dushanba — 14:00 gacha sanitariya kuni.\n🎉 Sizni 14:00 dan 22:00 gacha kutamiz!", "en":"🕐 FUNLANDIA OPENING HOURS\n\n🗓 Every day: 10:00–22:00\n\n🧹 Every Monday — sanitation day until 14:00.\n🎉 We are open from 14:00 to 22:00!"}
+    texts={"ru":"🕐 ВРЕМЯ РАБОТЫ FUNLANDIA\n\n🗓 Вторник – воскресенье: 10:00–22:00\n\n🧹 Каждый понедельник — санитарный день до 14:00. С 14:00 до 22:00 мы ждём вас!", "uz":"🕐 FUNLANDIA ISH VAQTI\n\n🗓 Seshanba – yakshanba: 10:00–22:00\n\n🧹 Har dushanba — 14:00 gacha sanitariya kuni. 14:00 dan 22:00 gacha sizni kutamiz!", "en":"🕐 FUNLANDIA OPENING HOURS\n\n🗓 Tuesday – Sunday: 10:00–22:00\n\n🧹 Every Monday is a sanitation day until 14:00. We look forward to seeing you from 14:00 to 22:00!"}
     await update.effective_message.reply_text(texts.get(lang,texts["ru"]), reply_markup=menu(lang))
 
 
 async def contacts(update: Update, lang):
-    texts={"ru":"📞 КОНТАКТЫ FUNLANDIA\n\n📞 Контакт: +998933810055\n☎️ Колл-центр: +998555127337\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz", "uz":"📞 FUNLANDIA ALOQA\n\n📞 Kontakt: +998933810055\n☎️ Call-markaz: +998555127337\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz", "en":"📞 FUNLANDIA CONTACTS\n\n📞 Contact: +998933810055\n☎️ Call center: +998555127337\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz"}
+    texts={"ru":"📞 КОНТАКТЫ FUNLANDIA\n\n📞 Контакт: +998933810055\n☎️ Колл-центр: +998 55 512-73-37\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz", "uz":"📞 FUNLANDIA ALOQA\n\n📞 Kontakt: +998933810055\n☎️ Call-markaz: +998 55 512-73-37\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz", "en":"📞 FUNLANDIA CONTACTS\n\n📞 Contact: +998933810055\n☎️ Call center: +998 55 512-73-37\n\n📱 Telegram: @Funlandia_Tashkent\n📸 Instagram: @funlandiauz"}
     await update.effective_message.reply_text(texts.get(lang,texts["ru"]), reply_markup=menu(lang))
 
 
 async def direct_contact(update: Update, lang, kind):
     if kind == "call":
-        texts={"ru":"☎️ КОЛЛ-ЦЕНТР\n\n📞 +998555127337","uz":"☎️ CALL-MARKAZ\n\n📞 +998555127337","en":"☎️ CALL CENTER\n\n📞 +998555127337"}
+        texts={"ru":"☎️ КОЛЛ-ЦЕНТР\n\n📞 +998 55 512-73-37","uz":"☎️ CALL-MARKAZ\n\n📞 +998 55 512-73-37","en":"☎️ CALL CENTER\n\n📞 +998 55 512-73-37"}
     else:
         texts={"ru":"📞 КОНТАКТ\n\n📞 +998933810055","uz":"📞 KONTAKT\n\n📞 +998933810055","en":"📞 CONTACT\n\n📞 +998933810055"}
     await update.effective_message.reply_text(texts.get(lang,texts["ru"]), reply_markup=menu(lang))
