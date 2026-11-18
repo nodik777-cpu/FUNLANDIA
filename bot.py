@@ -260,7 +260,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await hours(update, lang)
 
     if any(word in question for word in address_words):
-        return await simple(update, "address", lang)
+        return await simple(update, lang, "address")
 
     if any(word in question for word in contact_words):
         return await contacts(update, lang)
@@ -270,16 +270,13 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.effective_message.reply_text(
                 "🤸 Батуты: с 7 лет, под присмотром родителей/взрослого."
             )
-        elif "площад" in question or "playground" in question:
+            return
+        if "площад" in question or "playground" in question:
             await update.effective_message.reply_text(
-                "🛝 Детская площадка: до 1 года — бесплатно; от 1 до 16 лет — вход платный."
+                "🛝 В текущем меню указано, что вход для детей от 1 до 16 лет платный. "
+                "Для уточнения других возрастных исключений передам вопрос администратору."
             )
-        else:
-            await update.effective_message.reply_text(
-                "🛝 Детская площадка: до 1 года — бесплатно; от 1 до 16 лет — вход платный.\n"
-                "🤸 Батуты: с 7 лет, под присмотром родителей/взрослого."
-            )
-        return
+            return
 
     # Unknown questions are answered by the AI assistant using the verified
     # FUNLANDIA facts in ai_assistant.py. Availability and booking confirmation
