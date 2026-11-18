@@ -202,9 +202,31 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_lang = getattr(update.effective_user, "language_code", None)
     if fallback_lang == "ru" and telegram_lang in ("uz", "en"):
         fallback_lang = telegram_lang
-    lang = detect_message_language(raw, fallback_lang)
+    # Keep the conversation language for short replies such as "1 soat".
+    import re
+    short_followup = len(raw.split()) <= 3 and not re.search(
+        r"\b(hello|hi|salom|assalomu|rahmat|narxi|qancha|bolalar|maydoncha|batut|"
+        r"привет|здравствуйте|сколько|цена|ребён|ребен|площадк|батут|"
+        r"yosh|soat|hours?|час|лет|года)\b", raw.lower()
+    )
+    lang = fallback_lang if short_followup else detect_message_language(raw, fallback_lang)
     context.user_data["lang"] = lang
     question = raw.lower()
+
+    # Remember a child's age mentioned earlier and pass it explicitly to Gemini.
+    age_match = (
+        re.search(r"\b(\d{1,2})\s*(?:лет|года|год|месяц(?:а|ев)?|мес)\b", question)
+        or re.search(r"\b(\d{1,2})\s*(?:yosh|years? old|months? old)\b", question)
+    )
+    if age_match:
+        context.user_data["child_age"] = age_match.group(1)
+    known_age = context.user_data.get("child_age")
+    ai_question = (
+        f"Known context from this conversation: the child's age is {known_age}. "
+        f"Keep this age in mind when recommending zones and attractions. "
+        f"Current customer message: {raw}"
+        if known_age else raw
+    )
 
     # Friendly greetings at any later point.
     greetings = (
@@ -229,7 +251,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # FUNLANDIA facts in ai_assistant.py. Availability and booking confirmation
     # are always escalated to a human administrator.
     history = context.user_data.setdefault("ai_history", [])
-    answer, handoff = await answer_customer(raw, lang, history)
+    answer, handoff = await answer_customer(ai_question, lang, history)
 
     if handoff:
         user = update.effective_user
