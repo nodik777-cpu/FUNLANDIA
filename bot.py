@@ -111,7 +111,7 @@ def menu(lang="ru"):
             ["💬 Savol berish", "📸 FOTO-GID"],
             ["🎂 Tug‘ilgan kunni bron qilish", "🎟️ Narxlar"],
             ["🎠 Ko‘ngilochar", "🎁 Aksiya oyi"],
-            ["📍 Manzil", "🗺️ Xaritadagi joylashuv"]
+            ["📍 Manzil", "🗺️ Xaritadagi joylashuv"],
             ["🕐 Ish vaqti"],
             ["☎️ Kontakt", "📸 Instagram"],
             ["📱 Telegram", "🇷🇺 Русский"],
@@ -122,7 +122,7 @@ def menu(lang="ru"):
             ["💬 Ask a question", "📸 PHOTO GUIDE"],
             ["🎂 Book a Birthday", "🎟️ Prices"],
             ["🎠 Attractions", "🎁 Promotion"],
-            ["📍 Address", "🗺️ Map location"]
+            ["📍 Address", "🗺️ Map location"],
             ["🕐 Opening Hours"],
             ["☎️ Contact", "📸 Instagram"],
             ["📱 Telegram", "🇷🇺 Русский"],
@@ -133,7 +133,7 @@ def menu(lang="ru"):
             ["💬 Задать вопрос", "📸 ФОТО-ГИД"],
             ["🎂 Забронировать день рождения", "🎟️ Цены"],
             ["🎠 Развлечения", "🎁 Акция месяца"],
-            ["📍 Адрес", "🗺️ Локация на карте"]
+            ["📍 Адрес", "🗺️ Локация на карте"],
             ["🕐 Время работы"],
             ["☎️ Контакт", "📸 Instagram"],
             ["📱 Telegram", "🇺🇿 O‘zbekcha"],
