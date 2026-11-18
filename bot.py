@@ -111,7 +111,8 @@ def menu(lang="ru"):
             ["💬 Savol berish", "📸 FOTO-GID"],
             ["🎂 Tug‘ilgan kunni bron qilish", "🎟️ Narxlar"],
             ["🎠 Ko‘ngilochar", "🎁 Aksiya oyi"],
-            ["📍 Manzil", "🕐 Ish vaqti"],
+            ["📍 Manzil", "🗺️ Xaritadagi joylashuv"]
+            ["🕐 Ish vaqti"],
             ["☎️ Kontakt", "📸 Instagram"],
             ["📱 Telegram", "🇷🇺 Русский"],
             ["🇬🇧 English"],
@@ -121,7 +122,8 @@ def menu(lang="ru"):
             ["💬 Ask a question", "📸 PHOTO GUIDE"],
             ["🎂 Book a Birthday", "🎟️ Prices"],
             ["🎠 Attractions", "🎁 Promotion"],
-            ["📍 Address", "🕐 Opening Hours"],
+            ["📍 Address", "🗺️ Map location"]
+            ["🕐 Opening Hours"],
             ["☎️ Contact", "📸 Instagram"],
             ["📱 Telegram", "🇷🇺 Русский"],
             ["🇺🇿 O‘zbekcha"],
@@ -131,7 +133,8 @@ def menu(lang="ru"):
             ["💬 Задать вопрос", "📸 ФОТО-ГИД"],
             ["🎂 Забронировать день рождения", "🎟️ Цены"],
             ["🎠 Развлечения", "🎁 Акция месяца"],
-            ["📍 Адрес", "🕐 Время работы"],
+            ["📍 Адрес", "🗺️ Локация на карте"]
+            ["🕐 Время работы"],
             ["☎️ Контакт", "📸 Instagram"],
             ["📱 Telegram", "🇺🇿 O‘zbekcha"],
             ["🇬🇧 English"],
@@ -338,7 +341,7 @@ async def simple(update: Update, lang, kind):
         ending={"ru":"Будем рады видеть вас! 🎉","uz":"Sizni kutamiz! 🎉","en":"We look forward to seeing you! 🎉"}
         text=f"📍 FUNLANDIA\n\n{ADDRESS}\n\n{ending.get(lang,ending['ru'])}"
         map_text={"ru":"🗺️ Открыть на карте","uz":"🗺️ Xaritada ochish","en":"🗺️ Open map"}
-        keyboard=InlineKeyboardMarkup([[InlineKeyboardButton(map_text.get(lang,map_text["ru"]),url="https://yandex.uz/maps/-/CTT~uR0N")]])
+        keyboard=InlineKeyboardMarkup([[InlineKeyboardButton(map_text.get(lang,map_text["ru"]),url="https://yandex.uz/maps/org/funlandia/179053879477/?indoorLevel=1&ll=69.354446%2C41.352979&mode=search&sctx=ZAAAAAgBEAAaKAoSCcueBDbnUVFAERGPxMvTp0RAEhIJ%2B1xtxf6y0D8Rb0p5rYTuwD8iBgABAgMEBSgKOABAnp8GSAFqAnV6nQHNzMw9oAEAqAEAvQHPmqmMggIJZnVubGFuZGlhigIAkgIAmgIMZGVza3RvcC1tYXBz&sll=69.354446%2C41.352979&sspn=0.005647%2C0.002861&text=funlandia&utm_source=share&z=17")]])
         await update.effective_message.reply_text(text,reply_markup=keyboard); return
     if kind == "instagram":
         label={"ru":"📸 Instagram FUNLANDIA","uz":"📸 Instagram FUNLANDIA","en":"📸 FUNLANDIA Instagram"}[lang]
@@ -602,6 +605,8 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in ("🎠 Развлечения", "🎠 Ko‘ngilochar", "🎠 Attractions"):
         return await attractions(update, lang)
     if text in ("📍 Адрес", "📍 Manzil", "📍 Address"):
+        return await simple(update, lang, "address")
+    if text in ("🗺️ Локация на карте", "🗺️ Xaritadagi joylashuv", "🗺️ Map location"):
         return await simple(update, lang, "address")
     if text in ("🕐 Время работы", "🕐 Ish vaqti", "🕐 Opening Hours"):
         return await hours(update, lang)
