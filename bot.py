@@ -224,59 +224,9 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    price_words = ("цена", "цены", "стоимость", "сколько стоит", "сколько", "price", "narx")
-    birthday_words = (
-        "день рождения", "день рожд", "birthday",
-        "tug‘ilgan", "tugilgan", "тугилган кун"
-    )
-    direct_booking_words = (
-        "оформить бронь", "начать бронь", "начать бронирование",
-        "оформить бронирование", "заполнить заявку",
-        "bronni boshlash", "bron qilishni boshlash"
-    )
-    monday_words = ("понедельник", "санитар", "санитарный", "уборка", "dushanba", "sanitariya")
-    hours_words = ("работаете", "работа", "открыты", "открываетесь", "закрываетесь", "время работы", "режим", "soat")
-    address_words = ("адрес", "где вы", "где находитесь", "как найти", "manzil", "qayerda")
-    contact_words = ("телефон", "номер", "позвонить", "инстаграм", "instagram", "телеграм", "telegram", "контакт")
-    age_words = ("возраст", "лет", "до скольки", "с какого возраста", "сколько лет", "yosh", "necha yosh")
-
-    if any(word in question for word in price_words):
-        return await prices(update, lang)
-
-    if any(word in question for word in birthday_words):
-        return await birthday_gallery(update, lang)
-
-    if any(word in question for word in direct_booking_words):
-        return await birthday(update, context)
-
-    if any(word in question for word in monday_words):
-        await update.effective_message.reply_text(
-            "🧼 Каждый понедельник — санитарный день до 14:00.\n"
-            "С 14:00 до 22:00 FUNLANDIA работает."
-        )
-        return
-
-    if any(word in question for word in hours_words):
-        return await hours(update, lang)
-
-    if any(word in question for word in address_words):
-        return await simple(update, lang, "address")
-
-    if any(word in question for word in contact_words):
-        return await contacts(update, lang)
-
-    if any(word in question for word in age_words):
-        if "батут" in question or "trampoline" in question:
-            await update.effective_message.reply_text(
-                "🤸 Батуты: с 7 лет, под присмотром родителей/взрослого."
-            )
-            return
-        if "площад" in question or "playground" in question:
-            await update.effective_message.reply_text(
-                "🛝 Детям до 1 года — бесплатно. Детям от 1 года до 16 лет — вход платный."
-            )
-            return
-
+    # All free-form customer questions go to Gemini. Only explicit menu buttons
+    # and booking-form states are handled earlier in handler().
+    
     # Unknown questions are answered by the AI assistant using the verified
     # FUNLANDIA facts in ai_assistant.py. Availability and booking confirmation
     # are always escalated to a human administrator.
@@ -336,11 +286,11 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def prices(update: Update, lang):
     if lang == "uz":
-        text = ("🎟️ FUNLANDIA NARXLARI\n\n🛝 BOLALAR ZONASI\n🏰 Labirintlar\n🎪 Puflanadigan batutlar\n🎢 Tepaliklar\n🎯 Pnevmatik to‘plar\n\n💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n\n👶 1 yoshgacha bo‘lgan bolalar — bepul.\n👧👦 1 yoshdan 16 yoshgacha — kirish pullik.\n\n🤸 BATUT ZONASI\n💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n⚠️ 7 yoshdan boshlab, ota-ona yoki katta yoshli hamroh nazoratida.\n\n🎉 IKKALA ZONA — 120 000 so‘m\n♾️ Ikkala zonaga cheksiz kirish!")
+        text = ("🎟️ FUNLANDIA NARXLARI\n\n🛝 BOLALAR ZONASI\n🏰 Labirintlar\n🎪 Puflanadigan batutlar\n🎢 Tepaliklar\n🎯 Pnevmatik to‘plar\n\n💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n\n👶 1 yoshgacha bo‘lgan bolalar — bepul.\n👧👦 1 yoshdan 16 yoshgacha — kirish pullik.\n\n🤸 BATUT ZONASI\n💰 1 soat — 80 000 so‘m\n💰 2 soat — 90 000 so‘m\n♾️ Cheksiz — 100 000 so‘m\n⛔ 7 yoshgacha batut zonasiga kirish mumkin emas. 7 yoshdan boshlab — ota-ona yoki katta yoshli hamroh nazoratida.\n\n🎉 IKKALA ZONA — 120 000 so‘m\n♾️ Ikkala zonaga cheksiz kirish!")
     elif lang == "en":
-        text = ("🎟️ FUNLANDIA PRICES\n\n🛝 KIDS ZONE\n🏰 Labyrinths\n🎪 Inflatable trampolines\n🎢 Slides\n🎯 Air cannons\n\n💰 1 hour — 80,000 UZS\n💰 2 hours — 90,000 UZS\n♾️ Unlimited — 100,000 UZS\n\n👶 Children under 1 year old — free entry.\n👧👦 Children from 1 to 16 years — paid entry.\n\n🤸 TRAMPOLINE ZONE\n💰 1 hour — 80,000 UZS\n💰 2 hours — 90,000 UZS\n♾️ Unlimited — 100,000 UZS\n⚠️ From 7 years old, under parent/adult supervision.\n\n🎉 BOTH ZONES — 120,000 UZS\n♾️ Unlimited access to both zones!")
+        text = ("🎟️ FUNLANDIA PRICES\n\n🛝 KIDS ZONE\n🏰 Labyrinths\n🎪 Inflatable trampolines\n🎢 Slides\n🎯 Air cannons\n\n💰 1 hour — 80,000 UZS\n💰 2 hours — 90,000 UZS\n♾️ Unlimited — 100,000 UZS\n\n👶 Children under 1 year old — free entry.\n👧👦 Children from 1 to 16 years — paid entry.\n\n🤸 TRAMPOLINE ZONE\n💰 1 hour — 80,000 UZS\n💰 2 hours — 90,000 UZS\n♾️ Unlimited — 100,000 UZS\n⛔ Children under 7 are not allowed in the trampoline zone. From age 7, only under parent/adult supervision.\n\n🎉 BOTH ZONES — 120,000 UZS\n♾️ Unlimited access to both zones!")
     else:
-        text = ("🎟️ ЦЕНЫ FUNLANDIA\n\n🛝 ДЕТСКАЯ ЗОНА\n🏰 Лабиринты\n🎪 Надувные батуты\n🎢 Горки\n🎯 Пневмопушки\n\n💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n\n👶 Детям до 1 года — бесплатно.\n👧👦 Детям от 1 года до 16 лет — вход платный.\n\n🤸 БАТУТНАЯ ЗОНА\n💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n⚠️ С 7 лет, только под присмотром родителей или взрослого.\n\n🎉 ДВЕ ЗОНЫ — 120 000 сум\n♾️ Безлимитное посещение обеих зон!")
+        text = ("🎟️ ЦЕНЫ FUNLANDIA\n\n🛝 ДЕТСКАЯ ЗОНА\n🏰 Лабиринты\n🎪 Надувные батуты\n🎢 Горки\n🎯 Пневмопушки\n\n💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n\n👶 Детям до 1 года — бесплатно.\n👧👦 Детям от 1 года до 16 лет — вход платный.\n\n🤸 БАТУТНАЯ ЗОНА\n💰 1 час — 80 000 сум\n💰 2 часа — 90 000 сум\n♾️ Безлимит — 100 000 сум\n⛔ До 7 лет вход в батутную зону запрещён. С 7 лет — только под присмотром родителей или взрослого.\n\n🎉 ДВЕ ЗОНЫ — 120 000 сум\n♾️ Безлимитное посещение обеих зон!")
     await update.effective_message.reply_text(text, reply_markup=menu(lang))
 
 
