@@ -1,6 +1,6 @@
 import os
 import json
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, BusinessConnectionHandler, filters
 from ai_assistant import answer_customer
 
@@ -129,7 +129,10 @@ def menu(lang="ru"):
             ["🕐 Время работы", "📍 Контакты"],
             ["🇺🇿 O‘zbekcha", "🇬🇧 English"],
         ]
-    return ReplyKeyboardMarkup(two_col(rows), resize_keyboard=True)
+    keyboard_rows = two_col(rows)
+    app_labels = {"ru": "📲 Открыть приложение", "uz": "📲 Ilovani ochish", "en": "📲 Open app"}
+    keyboard_rows.append([KeyboardButton(app_labels.get(lang, app_labels["ru"]), web_app=WebAppInfo(url="https://funlandia-mini-app-test.up.railway.app/"))])
+    return ReplyKeyboardMarkup(keyboard_rows, resize_keyboard=True)
 
 def funlandia_menu(lang="ru"):
     if lang == "uz":
