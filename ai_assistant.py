@@ -102,7 +102,17 @@ async def answer_customer(question: str, lang: str, history: list):
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=8.0)) as client:
             response = await client.post(GEMINI_URL, headers=headers, json=payload)
-            response.raise_for_status()
+            if response.is_error:
+                try:
+                    error_data = response.json().get("error", {})
+                    error_message = str(error_data.get("message", ""))
+                except (ValueError, AttributeError):
+                    error_message = ""
+                print(
+                    f"Gemini API HTTP {response.status_code}: "
+                    f"{error_message[:300]}"
+                )
+                return "", False
             data = response.json()
 
         candidates = data.get("candidates") or []
