@@ -163,10 +163,29 @@ def two_col(rows):
     return out
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    requested_lang = context.args[0].lower() if context.args else "ru"
-    lang = requested_lang if requested_lang in ("ru", "uz", "en") else "ru"
+    start_arg = context.args[0].lower() if context.args else "ru"
+    action = start_arg if start_arg in ("question", "birthday", "photos", "promotion") else None
+    lang = start_arg if start_arg in ("ru", "uz", "en") else "ru"
     context.user_data.clear()
     context.user_data["lang"] = lang
+
+    # Deep links from the Mini App must open the matching bot section,
+    # not fall through to the generic welcome screen.
+    if action == "question":
+        prompts = {
+            "ru": "💬 Напишите ваш вопрос — я с радостью помогу!",
+            "uz": "💬 Savolingizni yozing — mamnuniyat bilan yordam beraman!",
+            "en": "💬 Type your question — I’ll be happy to help!",
+        }
+        await update.effective_message.reply_text(prompts[lang], reply_markup=menu(lang))
+        return
+    if action == "birthday":
+        return await birthday(update, context)
+    if action == "photos":
+        return await funlandia(update, lang)
+    if action == "promotion":
+        return await september_promo(update, context, lang)
+
     messages = {
         "ru": ("🎉 ДОБРО ПОЖАЛОВАТЬ В FUNLANDIA! 🎉\n\nМесто, где дети играют, веселятся и получают яркие эмоции, а родители отдыхают! ❤️\n\n🛝 Лабиринты • 🤸 Батуты • 🎢 Горки • 🎯 Пневмопушки • 🧗 Тарзанка\n\nВыберите интересующий раздел ниже 👇"),
         "uz": ("🎉 FUNLANDIA'GA XUSH KELIBSIZ! 🎉\n\nBu yerda bolalar o‘ynaydi, quvonadi va yorqin taassurotlar oladi, ota-onalar esa maroqli dam oladi! ❤️\n\n🛝 Labirintlar • 🤸 Batutlar • 🎢 Tepaliklar • 🎯 Pnevmatik to‘plar • 🧗 Tarzanka\n\nKerakli bo‘limni tanlang 👇"),
