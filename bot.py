@@ -104,33 +104,35 @@ def detect_message_language(text: str, fallback: str = "ru") -> str:
 
 
 def menu(lang="ru"):
+    # Telegram controls the actual keyboard-button colors; this layout uses
+    # bright carnival emoji and a clear two-column customer menu.
     if lang == "uz":
         rows = [
-            ["📸 FOTO-GID", "🎟️ Narxlar"],
-            ["🎁 Aksiya oyi"],
-            ["🎠 Ko‘ngilochar", "📍 Manzil"],
-            ["🎉 Tug‘ilgan kunni bron qilish", "🕐 Ish vaqti"],
-            ["📞 Kontakt", "📸 Instagram"],
+            ["💬 Savol berish", "📸 FOTO-GID"],
+            ["🎂 Tug‘ilgan kunni bron qilish", "🎟️ Narxlar"],
+            ["🎠 Ko‘ngilochar", "🎁 Aksiya oyi"],
+            ["📍 Manzil", "🕐 Ish vaqti"],
+            ["☎️ Kontakt", "📸 Instagram"],
             ["📱 Telegram", "🇷🇺 Русский"],
             ["🇬🇧 English"],
         ]
     elif lang == "en":
         rows = [
-            ["📸 PHOTO GUIDE", "🎟️ Prices"],
-            ["🎁 Promotion"],
-            ["🎠 Attractions", "📍 Address"],
-            ["🎉 Book a Birthday", "🕐 Opening Hours"],
-            ["📞 Contact", "📸 Instagram"],
+            ["💬 Ask a question", "📸 PHOTO GUIDE"],
+            ["🎂 Book a Birthday", "🎟️ Prices"],
+            ["🎠 Attractions", "🎁 Promotion"],
+            ["📍 Address", "🕐 Opening Hours"],
+            ["☎️ Contact", "📸 Instagram"],
             ["📱 Telegram", "🇷🇺 Русский"],
             ["🇺🇿 O‘zbekcha"],
         ]
     else:
         rows = [
-            ["📸 ФОТО-ГИД", "🎟️ Цены"],
-            ["🎁 Акция месяца"],
-            ["🎠 Развлечения", "📍 Адрес"],
-            ["🎉 Забронировать день рождения", "🕐 Время работы"],
-            ["📞 Контакт", "📸 Instagram"],
+            ["💬 Задать вопрос", "📸 ФОТО-ГИД"],
+            ["🎂 Забронировать день рождения", "🎟️ Цены"],
+            ["🎠 Развлечения", "🎁 Акция месяца"],
+            ["📍 Адрес", "🕐 Время работы"],
+            ["☎️ Контакт", "📸 Instagram"],
             ["📱 Telegram", "🇺🇿 O‘zbekcha"],
             ["🇬🇧 English"],
         ]
@@ -574,6 +576,14 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Главное меню:" if lang == "ru" else ("Asosiy menyu:" if lang == "uz" else "Main menu:" ),
             reply_markup=menu(lang)
         )
+
+    if text in ("💬 Задать вопрос", "💬 Savol berish", "💬 Ask a question"):
+        prompts = {
+            "ru": "💬 Напишите ваш вопрос — я с радостью помогу!",
+            "uz": "💬 Savolingizni yozing — mamnuniyat bilan yordam beraman!",
+            "en": "💬 Type your question — I’ll be happy to help!",
+        }
+        return await update.effective_message.reply_text(prompts.get(lang, prompts["ru"]))
 
     if text in ("📸 ФОТО-ГИД", "📸 FOTO-GID", "📸 PHOTO GUIDE"):
         return await funlandia(update, lang)
