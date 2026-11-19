@@ -205,18 +205,6 @@ async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await start(update, context)
 
 
-async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
-    context.user_data["lang"] = "uz"
-    await update.effective_message.reply_text(
-        "🎉 FUNLANDIA'GA XUSH KELIBSIZ! 🎉\n\n"
-        "Bu yerda bolalar o‘ynaydi, quvonadi va yorqin taassurotlar oladi, "
-        "ota-onalar esa maroqli dam oladi! ❤️\n\n"
-        "🛝 Labirintlar • 🤸 Batutlar • 🎢 Tepaliklar • 🎯 Pnevmatik to‘plar • 🧗 Tarzanka\n\n"
-        "Kerakli bo‘limni tanlang 👇",
-        reply_markup=menu("uz")
-    )
-
 async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Friendly customer assistant: greet first, then answer with verified facts or AI."""
     raw = (update.effective_message.text or "").strip()
