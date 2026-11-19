@@ -177,8 +177,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Deep links from the Mini App must open the matching bot section,
     # not fall through to the generic welcome screen.
-    if action == "question":
-        prompts = {
+    if action == "question":        prompts = {
             "ru": "💬 Напишите ваш вопрос — я с радостью помогу!",
             "uz": "💬 Savolingizni yozing — mamnuniyat bilan yordam beraman!",
             "en": "💬 Type your question — I’ll be happy to help!",
@@ -357,8 +356,7 @@ async def contacts(update: Update, lang):
         ),
     }
     buttons = [
-        [
-            InlineKeyboardButton("📱 Telegram", url=TELEGRAM),
+        [            InlineKeyboardButton("📱 Telegram", url=TELEGRAM),
             InlineKeyboardButton("📸 Instagram", url=INSTAGRAM),
         ],
         [
@@ -406,12 +404,27 @@ async def funlandia(update: Update, lang):
 
 
 async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang=context.user_data.get("lang","ru"); context.user_data["birthday_step"]=1; context.user_data["birthday"]={}
-    texts={
-      "ru":"🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA!\n\n🎁 СКИДКА ДЛЯ ИМЕНИННИКА\n\nСкидка действует только на одну выбранную зону — на детскую площадку ИЛИ на батутную зону. Одновременно на обе зоны скидка не распространяется.\n🛝 Детская площадка\nИЛИ\n🤸 Батутная зона\n\n👧 5 детей — 450 000 сум\n👦 10 детей — 900 000 сум\n\n🍽️ ЗАКАЗ СТОЛА\n🪑 Стол на 3 часа — 200 000 сум\n➕ Дополнительное время — 50 000 сум за каждый час\n\n🪑 ВЫБОР ЗОНЫ ПОСАДКИ\n1️⃣ Зона 1\n2️⃣ Зона 2\n3️⃣ Зона 3\n\n💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\n\nЧтобы оставить заявку, напишите имя именинника:",
-      "uz":"🎂 FUNLANDIA'DA TUG‘ILGAN KUN!\n\n🎁 TUG‘ILGAN KUN EGASI UCHUN CHEGIRMA\n\nChegirma faqat bitta tanlangan zonaga amal qiladi — bolalar maydonchasi YOKI batut zonasi. Ikkala zonaga bir vaqtda chegirma berilmaydi.\n🛝 Bolalar maydonchasi\nYOKI\n🤸 Batut zonasi\n\n👧 5 bola — 450 000 so‘m\n👦 10 bola — 900 000 so‘m\n\n🍽️ STOL BUYURTMA QILISH\n🪑 3 soatga stol — 200 000 so‘m\n➕ Qo‘shimcha vaqt — har bir soat uchun 50 000 so‘m\n\n🪑 O‘TIRISH ZONASINI TANLASH\n1️⃣ Zona 1\n2️⃣ Zona 2\n3️⃣ Zona 3\n\n💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\n\nAriza qoldirish uchun tug‘ilgan kun egasining ismini yozing:",
-      "en":"🎂 BIRTHDAY AT FUNLANDIA!\n\n🎁 BIRTHDAY CHILD DISCOUNT\n\nThe discount applies to ONE selected zone only — the Kids Playground OR the Trampoline Zone. It does not apply to both zones at the same time.\n🛝 Kids Playground\nOR\n🤸 Trampoline Zone\n\n👧 5 children — 450,000 UZS\n👦 10 children — 900,000 UZS\n\n🍽️ TABLE BOOKING\n🪑 Table for 3 hours — 200,000 UZS\n➕ Extra time — 50,000 UZS per hour\n\n🪑 SEATING ZONE\n1️⃣ Zone 1\n2️⃣ Zone 2\n3️⃣ Zone 3\n\n💰 A minimum advance payment of 100,000 UZS is required to confirm the booking.\n\nTo submit a request, write the birthday child’s name:"}
-    await update.effective_message.reply_text(texts[lang], reply_markup=menu(lang))
+    lang = context.user_data.get("lang", "ru")
+    context.user_data["birthday"] = {}
+    context.user_data["birthday_step"] = 1
+    intro = {
+        "ru": "🎂 ЗАЯВКА НА ДЕНЬ РОЖДЕНИЯ В FUNLANDIA\\n\\n"
+              "Ответьте на несколько вопросов — мы передадим заявку администратору.\\n"
+              "📌 Важно: выбранная дата пока не подтверждает бронирование. "
+              "Администратор уточнит доступность даты, детали праздника и стоимость.\\n\\n"
+              "🎂 Как зовут именинника?",
+        "uz": "🎂 FUNLANDIA'DA TUG‘ILGAN KUN UCHUN ARIZA\\n\\n"
+              "Bir nechta savolga javob bering — arizangiz administratorga yuboriladi.\\n"
+              "📌 Muhim: tanlangan sana bron tasdiqlanganini anglatmaydi. "
+              "Administrator sana mavjudligi, bayram tafsilotlari va narxini aniqlashtiradi.\\n\\n"
+              "🎂 Tug‘ilgan kun egasining ismi nima?",
+        "en": "🎂 FUNLANDIA BIRTHDAY REQUEST\\n\\n"
+              "Answer a few questions and we will forward your request to the administrator.\\n"
+              "📌 Please note: your selected date does not confirm a booking. "
+              "The administrator will check availability and confirm the details and price.\\n\\n"
+              "🎂 What is the birthday child’s name?",
+    }
+    await update.effective_message.reply_text(intro.get(lang, intro["ru"]))
 
 
 async def september_promo(update: Update, context: ContextTypes.DEFAULT_TYPE, lang):
@@ -537,8 +550,7 @@ async def donephoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         return
-    key = context.user_data.get("setting_photo")
-    if not key:
+    key = context.user_data.get("setting_photo")    if not key:
         return
     photo = update.effective_message.photo[-1]
     photos = load_photos()
@@ -552,51 +564,178 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def birthday_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang=context.user_data.get("lang","ru"); step=context.user_data.get("birthday_step",1); value=(update.effective_message.text or "").strip(); data=context.user_data.setdefault("birthday",{})
-    fields={
-      "ru":[("name","🎂 Как зовут именинника?"),("age","🎈 Сколько лет исполнится имениннику?"),("date","📅 На какую дату планируете праздник?"),("children","👧👦 Сколько будет детей?"),("time","🕐 На какое время планируете праздник?"),("phone","📞 Оставьте номер телефона для связи:"),("seat_zone","🪑 Какую зону посадки выбираете: Зона 1, Зона 2 или Зона 3?"),("extras","🎁 Дополнительные услуги\n\n🎈 Оформление шарами\n🫧 Мыльные пузыри\n🎭 Оформление стены с героями\n\nНапишите, что хотите добавить или «без доп. услуг»."),("advance","💰 Аванс — минимум 100 000 сум после подтверждения заявки. Готовы внести аванс после подтверждения? Напишите: да / нет.")],
-      "uz":[("name","🎂 Tug‘ilgan kun egasining ismi nima?"),("age","🎈 Tug‘ilgan kun egasining yoshi nechaga to‘ladi?"),("date","📅 Bayram qaysi sanada bo‘ladi?"),("children","👧👦 Nechta bola bo‘ladi?"),("time","🕐 Bayram uchun qaysi vaqt qulay?"),("phone","📞 Bog‘lanish uchun telefon raqamingizni yozing:"),("seat_zone","🪑 Qaysi o‘tirish zonasini tanlaysiz: 1-zona, 2-zona yoki 3-zona?"),("extras","🎁 Qo‘shimcha xizmatlar\n\n🎈 Sharlar bilan bezatish\n🫧 Sovun pufaklari\n🎭 Qahramonlar bilan devor bezagi\n\nNimani qo‘shishni xohlaysiz yoki «qo‘shimcha xizmatlarsiz» deb yozing."),("advance","💰 Avans — ariza tasdiqlangandan keyin kamida 100 000 so‘m. Tasdiqlangandan keyin avans to‘lashga tayyormisiz? Ha / yo‘q.")],
-      "en":[("name","🎂 What is the birthday child’s name?"),("age","🎈 How old will the birthday child be?"),("date","📅 What date are you planning the celebration?"),("children","👧👦 How many children will attend?"),("time","🕐 What time would you like to celebrate?"),("phone","📞 Please leave a phone number for contact:"),("seat_zone","🪑 Which seating zone would you like: Zone 1, Zone 2 or Zone 3?"),("extras","🎁 Additional services\n\n🎈 Balloon decoration\n🫧 Soap bubbles\n🎭 Character wall decoration\n\nTell us what you would like to add, or write “no extras”."),("advance","💰 A minimum advance payment of 100,000 UZS is required after the request is confirmed. Are you ready to pay the advance after confirmation? Yes / no.")]
+    lang = context.user_data.get("lang", "ru")
+    step = context.user_data.get("birthday_step", 1)
+    value = (update.effective_message.text or "").strip()
+    data = context.user_data.setdefault("birthday", {})
+    fields = {
+        "ru": [
+            ("name", "🎂 Как зовут именинника?"),
+            ("age", "🎈 Сколько лет исполнится имениннику?"),
+            ("date", "📅 На какую дату планируете праздник?"),
+            ("children", "👧👦 Сколько будет детей?"),
+            ("adults", "👨‍👩‍👧‍👦 Сколько будет взрослых?"),
+            ("phone", "📞 Оставьте номер телефона для связи:"),
+            ("format", "🎉 Какой формат праздника предпочитаете? Опишите, пожалуйста."),
+            ("wishes", "💬 Есть ли дополнительные пожелания или особые детали? Если нет, напишите «нет»."),
+        ],
+        "uz": [
+            ("name", "🎂 Tug‘ilgan kun egasining ismi nima?"),
+            ("age", "🎈 Tug‘ilgan kun egasi necha yoshga to‘ladi?"),
+            ("date", "📅 Bayramni qaysi sanaga rejalashtiryapsiz?"),
+            ("children", "👧👦 Nechta bola keladi?"),
+            ("adults", "👨‍👩‍👧‍👦 Nechta kattalar keladi?"),
+            ("phone", "📞 Bog‘lanish uchun telefon raqamingizni yozing:"),
+            ("format", "🎉 Bayramning qaysi formatini xohlaysiz? Iltimos, yozing."),
+            ("wishes", "💬 Qo‘shimcha istaklaringiz yoki muhim tafsilotlar bormi? Bo‘lmasa, «yo‘q» deb yozing."),
+        ],
+        "en": [
+            ("name", "🎂 What is the birthday child’s name?"),
+            ("age", "🎈 How old will the birthday child be?"),
+            ("date", "📅 What date are you planning the celebration?"),
+            ("children", "👧👦 How many children will attend?"),
+            ("adults", "👨‍👩‍👧‍👦 How many adults will attend?"),
+            ("phone", "📞 Please leave a contact phone number:"),
+            ("format", "🎉 What kind of celebration would you like? Please describe it."),
+            ("wishes", "💬 Any additional wishes or important details? If not, write “no”."),
+        ],
     }[lang]
     if not value:
-        await update.effective_message.reply_text({"ru":"Пожалуйста, напишите ответ.","uz":"Iltimos, javobingizni yozing.","en":"Please enter your answer."}[lang]); return
-    key,_current_prompt=fields[step-1]; data[key]=value
-    if step<len(fields):
-        next_prompt=fields[step][1]
-        context.user_data["birthday_step"]=step+1; await update.effective_message.reply_text(next_prompt); return
-    context.user_data["birthday_step"]=10
-    if lang=="ru":
-        summary=("🎂 ПРОВЕРЬТЕ ЗАЯВКУ НА ДЕНЬ РОЖДЕНИЯ\n\n" f"👤 Именинник: {data['name']}\n🎈 Возраст: {data['age']}\n📅 Дата: {data['date']}\n👧👦 Детей: {data['children']}\n🕐 Время: {data['time']}\n📞 Телефон: {data['phone']}\n🪑 Зона посадки: {data['seat_zone']}\n🎁 Дополнительные услуги: {data['extras']}\n💰 Аванс: {data['advance']}\n\nНажмите «Подтвердить заявку», чтобы отправить её администратору.")
-        kb=[["✅ Подтвердить заявку","✏️ Изменить"],["🔙 Назад"]]
-    elif lang=="uz":
-        summary=("🎂 TUG‘ILGAN KUN BRONI ARIZASINI TEKSHIRING\n\n" f"👤 Tug‘ilgan kun egasi: {data['name']}\n🎈 Yosh: {data['age']}\n📅 Sana: {data['date']}\n👧👦 Bolalar: {data['children']}\n🕐 Vaqt: {data['time']}\n📞 Telefon: {data['phone']}\n🪑 O‘tirish zonasi: {data['seat_zone']}\n🎁 Qo‘shimcha xizmatlar: {data['extras']}\n💰 Avans: {data['advance']}\n\nArizani administratorga yuborish uchun «Arizani tasdiqlash» tugmasini bosing.")
-        kb=[["✅ Arizani tasdiqlash","✏️ O‘zgartirish"],["🔙 Orqaga"]]
+        await update.effective_message.reply_text({
+            "ru": "Пожалуйста, напишите ответ.",
+            "uz": "Iltimos, javobingizni yozing.",
+            "en": "Please enter your answer.",
+        }[lang])
+        return
+
+    if step < 1 or step > len(fields):
+        context.user_data.pop("birthday_step", None)
+        return
+
+    key, _ = fields[step - 1]
+    data[key] = value
+    if step < len(fields):
+        context.user_data["birthday_step"] = step + 1
+        await update.effective_message.reply_text(fields[step][1])
+        return
+
+    context.user_data["birthday_step"] = 9
+    if lang == "ru":
+        summary = (
+            "🎂 ПРОВЕРЬТЕ ЗАЯВКУ НА ДЕНЬ РОЖДЕНИЯ\\n\\n"
+            f"👤 Именинник: {data['name']}\\n🎈 Возраст: {data['age']}\\n"
+            f"📅 Желаемая дата: {data['date']}\\n👧👦 Детей: {data['children']}\\n"
+            f"👨‍👩‍👧‍👦 Взрослых: {data['adults']}\\n📞 Телефон: {data['phone']}\\n"
+            f"🎉 Формат праздника: {data['format']}\\n💬 Пожелания: {data['wishes']}\\n\\n"
+            "Нажмите «Подтвердить заявку», чтобы отправить её администратору.\\n"
+            "Это заявка, а не подтверждение бронирования. Администратор уточнит доступность даты, детали и стоимость."
+        )
+        kb = [["✅ Подтвердить заявку", "✏️ Изменить"], ["🔙 Назад"]]
+    elif lang == "uz":
+        summary = (
+            "🎂 TUG‘ILGAN KUN ARIZASINI TEKSHIRING\\n\\n"
+            f"👤 Ism: {data['name']}\\n🎈 Yosh: {data['age']}\\n"
+            f"📅 Rejalashtirilgan sana: {data['date']}\\n👧👦 Bolalar: {data['children']}\\n"
+            f"👨‍👩‍👧‍👦 Kattalar: {data['adults']}\\n📞 Telefon: {data['phone']}\\n"
+            f"🎉 Bayram formati: {data['format']}\\n💬 Istaklar: {data['wishes']}\\n\\n"
+            "Arizani administratorga yuborish uchun «Arizani tasdiqlash» tugmasini bosing.\\n"
+            "Bu ariza, bron tasdig‘i emas. Administrator sana mavjudligi, tafsilotlar va narxni aniqlashtiradi."
+        )
+        kb = [["✅ Arizani tasdiqlash", "✏️ O‘zgartirish"], ["🔙 Orqaga"]]
     else:
-        summary=("🎂 CHECK YOUR BIRTHDAY BOOKING\n\n" f"👤 Birthday child: {data['name']}\n🎈 Age: {data['age']}\n📅 Date: {data['date']}\n👧👦 Children: {data['children']}\n🕐 Time: {data['time']}\n📞 Phone: {data['phone']}\n🪑 Seating zone: {data['seat_zone']}\n🎁 Additional services: {data['extras']}\n💰 Advance: {data['advance']}\n\nPress “Confirm request” to send it to the administrator.")
-        kb=[["✅ Confirm request","✏️ Edit"],["🔙 Back"]]
-    await update.effective_message.reply_text(summary,reply_markup=ReplyKeyboardMarkup(two_col(kb),resize_keyboard=True))
+        summary = (
+            "🎂 CHECK YOUR BIRTHDAY REQUEST\\n\\n"
+            f"👤 Birthday child: {data['name']}\\n🎈 Age: {data['age']}\\n"
+            f"📅 Requested date: {data['date']}\\n👧👦 Children: {data['children']}\\n"
+            f"👨‍👩‍👧‍👦 Adults: {data['adults']}\\n📞 Phone: {data['phone']}\\n"
+            f"🎉 Celebration format: {data['format']}\\n💬 Wishes: {data['wishes']}\\n\\n"
+            "Press “Confirm request” to send it to the administrator.\\n"
+            "This is a request, not a confirmed booking. The administrator will check availability, details and price."
+        )
+        kb = [["✅ Confirm request", "✏️ Edit"], ["🔙 Back"]]
+    await update.effective_message.reply_text(
+        summary,
+        reply_markup=ReplyKeyboardMarkup(two_col(kb), resize_keyboard=True),
+    )
+
 
 async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang=context.user_data.get("lang","ru"); data=context.user_data.get("birthday",{}); username=update.effective_user.username or "нет username"
-    if lang=="en":
-        msg=("🎂 NEW FUNLANDIA BIRTHDAY REQUEST\n\n" f"👤 Birthday child: {data.get('name','')}\n🎈 Age: {data.get('age','')}\n📅 Date: {data.get('date','')}\n👧👦 Children: {data.get('children','')}\n🕐 Time: {data.get('time','')}\n📞 Phone: {data.get('phone','')}\n🪑 Seating zone: {data.get('seat_zone','')}\n🎁 Additional services: {data.get('extras','')}\n💰 Advance: {data.get('advance','')}\nTelegram: @{username}")
-    else:
-        msg=("🎂 НОВАЯ ЗАЯВКА FUNLANDIA\n\n" f"👤 Именинник: {data.get('name','')}\n🎈 Возраст: {data.get('age','')}\n📅 Дата: {data.get('date','')}\n👧👦 Детей: {data.get('children','')}\n🕐 Время: {data.get('time','')}\n📞 Телефон: {data.get('phone','')}\n🪑 Зона посадки: {data.get('seat_zone','')}\n🎁 Дополнительные услуги: {data.get('extras','')}\n💰 Аванс: {data.get('advance','')}\nTelegram: @{username}")
+    lang = context.user_data.get("lang", "ru")
+    data = context.user_data.get("birthday", {})
+    user = update.effective_user
+    username = f"@{user.username}" if user.username else "нет username"
+    display_name = user.full_name or "Без имени"
+    labels = {
+        "ru": ("НОВАЯ ЗАЯВКА НА ДЕНЬ РОЖДЕНИЯ", "Именинник", "Возраст", "Желаемая дата",
+               "Детей", "Взрослых", "Телефон", "Формат праздника", "Пожелания"),
+        "uz": ("YANGI TUG‘ILGAN KUN ARIZASI", "Ism", "Yosh", "Rejalashtirilgan sana",
+               "Bolalar", "Kattalar", "Telefon", "Bayram formati", "Istaklar"),
+        "en": ("NEW BIRTHDAY REQUEST", "Birthday child", "Age", "Requested date",
+               "Children", "Adults", "Phone", "Celebration format", "Wishes"),
+    }
+    title, name_l, age_l, date_l, children_l, adults_l, phone_l, format_l, wishes_l = labels.get(lang, labels["ru"])
+    msg = (
+        f"🎂 {title}\\n\\n"
+        f"👤 {name_l}: {data.get('name', '')}\\n🎈 {age_l}: {data.get('age', '')}\\n"
+        f"📅 {date_l}: {data.get('date', '')}\\n👧👦 {children_l}: {data.get('children', '')}\\n"
+        f"👨‍👩‍👧‍👦 {adults_l}: {data.get('adults', '')}\\n📞 {phone_l}: {data.get('phone', '')}\\n"
+        f"🎉 {format_l}: {data.get('format', '')}\\n💬 {wishes_l}: {data.get('wishes', '')}\\n\\n"
+        f"👥 Клиент: {display_name} ({username})\\n"
+        f"🆔 Telegram ID: {user.id}\\n"
+        "⚠️ Дата не подтверждена. Требуется связаться с клиентом, проверить доступность, согласовать детали, стоимость и аванс."
+    )
+    sent = False
     if ADMIN_CHAT_ID:
-        try: await context.bot.send_message(chat_id=ADMIN_CHAT_ID,text=msg)
-        except Exception as exc: print(f"Birthday admin notification error: {exc}")
-    context.user_data.clear(); context.user_data["lang"]=lang
-    done={"ru":"✅ Заявка отправлена администратору!\n\n💰 Для подтверждения бронирования необходим аванс — минимум 100 000 сум.\nАдминистратор FUNLANDIA свяжется с вами.","uz":"✅ Arizangiz administratorga yuborildi!\n\n💰 Bronni tasdiqlash uchun kamida 100 000 so‘m avans kerak.\nAdministrator FUNLANDIA siz bilan bog‘lanadi.","en":"✅ Your request has been sent to the administrator!\n\n💰 A minimum advance payment of 100,000 UZS is required to confirm the booking.\nFUNLANDIA administrator will contact you."}
-    await update.effective_message.reply_text(done[lang],reply_markup=menu(lang))
+        try:
+            await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=msg)
+            sent = True
+        except Exception as exc:
+            print(f"Birthday admin notification error: {exc}")
+    context.user_data.pop("birthday_step", None)
+    context.user_data.pop("birthday", None)
+    context.user_data["lang"] = lang
+    replies = {
+        "ru": "✅ Ваша заявка отправлена администратору FUNLANDIA.\\n\\n"
+              "📌 Это пока не является подтверждением бронирования. "
+              "Администратор уточнит доступность даты, детали праздника, стоимость и аванс.\\n"
+              "Мы свяжемся с вами.",
+        "uz": "✅ Arizangiz FUNLANDIA administratoriga yuborildi.\\n\\n"
+              "📌 Bu hali bron tasdiqlanganini anglatmaydi. "
+              "Administrator sana mavjudligi, bayram tafsilotlari, narxi va avansni aniqlashtiradi.\\n"
+              "Siz bilan bog‘lanamiz.",
+        "en": "✅ Your request has been sent to the FUNLANDIA administrator.\\n\\n"
+              "📌 This is not a booking confirmation yet. "
+              "The administrator will check the date, celebration details, price and advance payment.\\n"
+              "We will contact you.",
+    }
+    if not sent:
+        replies = {
+            "ru": replies["ru"] + "\\n☎️ Если с вами не связались, позвоните: +998 55 512-73-37.",
+            "uz": replies["uz"] + "\\n☎️ Agar siz bilan bog‘lanishmasa: +998 55 512-73-37.",
+            "en": replies["en"] + "\\n☎️ If you are not contacted, call: +998 55 512-73-37.",
+        }
+    await update.effective_message.reply_text(replies.get(lang, replies["ru"]), reply_markup=menu(lang))
+
 
 async def birthday_confirm_or_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang=context.user_data.get("lang","ru"); text=(update.effective_message.text or "").strip()
-    edit={"ru":"✏️ Изменить","uz":"✏️ O‘zgartirish","en":"✏️ Edit"}; confirm={"ru":"✅ Подтвердить заявку","uz":"✅ Arizani tasdiqlash","en":"✅ Confirm request"}
-    if text==edit[lang]:
-        context.user_data["birthday_step"]=1; context.user_data["birthday"]={}
-        await update.effective_message.reply_text({"ru":"Начнём заявку заново. 🎂\n\nКак зовут именинника?","uz":"Arizani boshidan boshlaymiz. 🎂\n\nTug‘ilgan kun egasining ismi nima?","en":"Let’s start the request again. 🎂\n\nWhat is the birthday child’s name?"}[lang]); return True
-    if text==confirm[lang]: await finish_birthday(update,context); return True
+    lang = context.user_data.get("lang", "ru")
+    text = (update.effective_message.text or "").strip()
+    edit = {"ru": "✏️ Изменить", "uz": "✏️ O‘zgartirish", "en": "✏️ Edit"}
+    confirm = {"ru": "✅ Подтвердить заявку", "uz": "✅ Arizani tasdiqlash", "en": "✅ Confirm request"}
+    if text == edit[lang]:
+        context.user_data["birthday_step"] = 1
+        context.user_data["birthday"] = {}
+        await update.effective_message.reply_text({
+            "ru": "Начнём заявку заново. 🎂\\n\\nКак зовут именинника?",
+            "uz": "Arizani boshidan boshlaymiz. 🎂\\n\\nTug‘ilgan kun egasining ismi nima?",
+            "en": "Let’s start the request again. 🎂\\n\\nWhat is the birthday child’s name?",
+        }[lang])
+        return True
+    if text == confirm[lang]:
+        await finish_birthday(update, context)
+        return True
     return False
+
 
 async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.effective_message.text or "").strip()
@@ -698,7 +837,7 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in photo_map:
         return await send_photo_key(update, context, photo_map[text])
 
-    if context.user_data.get("birthday_step") == 10:
+    if context.user_data.get("birthday_step") == 9:
         if await birthday_confirm_or_edit(update, context):
             return
     if context.user_data.get("birthday_step"):
@@ -717,8 +856,7 @@ async def business_connection(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     if is_admin(update) and ADMIN_CHAT_ID:
-        rights = getattr(connection, "rights", None)
-        can_reply = getattr(rights, "can_reply", False)
+        rights = getattr(connection, "rights", None)        can_reply = getattr(rights, "can_reply", False)
         status = "разрешены" if can_reply else "не подтверждены"
         try:
             await context.bot.send_message(
