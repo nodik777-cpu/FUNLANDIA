@@ -104,19 +104,40 @@ def detect_message_language(text: str, fallback: str = "ru") -> str:
 
 
 def menu(lang="ru"):
-    # The old multi-row Telegram keyboard is intentionally replaced.
-    # The full colourful eight-tile menu lives in the Telegram Mini App.
+    # Full Telegram menu plus a separate Mini App launcher at the top.
     app_labels = {
-        "ru": "🎡 Открыть меню FUNLANDIA",
-        "uz": "🎡 FUNLANDIA menyusini ochish",
-        "en": "🎡 Open FUNLANDIA menu",
+        "ru": "🎡 Открыть графическое меню FUNLANDIA",
+        "uz": "🎡 FUNLANDIA grafik menyusini ochish",
+        "en": "🎡 Open FUNLANDIA visual menu",
     }
+    if lang == "uz":
+        rows = [
+            ["💬 Savol berish", "📸 FOTO-GID"],
+            ["🎉 Tug‘ilgan kunni bron qilish", "🎟️ Narxlar"],
+            ["🎠 Ko‘ngilochar", "🎁 Aksiya oyi"],
+            ["🕐 Ish vaqti", "📍 Kontaktlar"],
+        ]
+    elif lang == "en":
+        rows = [
+            ["💬 Ask a question", "📸 PHOTO GUIDE"],
+            ["🎉 Book a Birthday", "🎟️ Prices"],
+            ["🎠 Attractions", "🎁 Promotion"],
+            ["🕐 Opening Hours", "📍 Contacts"],
+        ]
+    else:
+        rows = [
+            ["💬 Задать вопрос", "📸 ФОТО-ГИД"],
+            ["🎉 Забронировать день рождения", "🎟️ Цены"],
+            ["🎠 Развлечения", "🎁 Акция месяца"],
+            ["🕐 Время работы", "📍 Контакты"],
+        ]
     keyboard = [[
         KeyboardButton(
             app_labels.get(lang, app_labels["ru"]),
             web_app=WebAppInfo(url="https://funlandia-mini-app-test.up.railway.app/")
         )
     ]]
+    keyboard.extend(two_col(rows))
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
 
 def funlandia_menu(lang="ru"):
