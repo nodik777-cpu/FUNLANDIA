@@ -408,7 +408,7 @@ async def simple(update: Update, lang, kind):
     await update.effective_message.reply_text(text,reply_markup=menu(lang))
 
 async def attractions(update: Update, lang):
-    texts={"ru":"🎠 НАШИ РАЗВЛЕЧЕНИЯ\n\n🛝 4-этажные лабиринты\n🎪 Надувные батуты\n🤸 Профессиональные батуты\n🎢 Горки\n🛝 17-метровая горка\n🧗 Тарзанка\n🎯 Пневмопушки\n🧸 Зона для малышей\n🏖️ Кинетический песок\n🎠 Карусели", "uz":"🎠 BIZNING KO‘NGILOCHARLAR\n\n🛝 4 qavatli labirintlar\n🎪 Puflanadigan batutlar\n🤸 Professional batutlar\n🎢 Tepaliklar\n🛝 17 metrlik tepalik\n🧗 Tarzanka\n🎯 Pnevmatik to‘plar\n🧸 Kichkintoylar zonasi\n🏖️ Kinetik qum\n🎠 Karusellar", "en":"🎠 OUR ATTRACTIONS\n\n🛝 4-floor labyrinths\n🎪 Inflatable trampolines\n🤸 Professional trampolines\n🎢 Slides\n🛝 17-meter slide\n🧗 Rope adventure\n🎯 Air cannons\n🧸 Toddler zone\n🏖️ Kinetic sand\n🎠 Carousels"}
+    texts={"ru":"🎠 НАШИ РАЗВЛЕЧЕНИЯ\n\n🛝 4-этажный лабиринт\n🎪 Надувные батуты\n🤸 Профессиональные батуты\n🎢 Скоростные горки, включая 17-метровую\n🧗 Канатный маршрут и тарзанка\n🎯 Пневмопушки\n🧸 Зона для малышей\n🏖️ Кинетический песок\n🎠 Карусели\n🎮 Игровые автоматы", "uz":"🎠 BIZNING KO‘NGILOCHARLAR\n\n🛝 4 qavatli labirint\n🎪 Puflanadigan batutlar\n🤸 Professional batutlar\n🎢 Tezkor sirpanchiqlar, jumladan 17 metrlik\n🧗 Arqonli yo‘lak va tarzanka\n🎯 Pnevmatik to‘plar\n🧸 Kichkintoylar zonasi\n🏖️ Kinetik qum\n🎠 Karusellar\n🎮 O‘yin avtomatlari", "en":"🎠 OUR ATTRACTIONS\n\n🛝 4-floor labyrinth\n🎪 Inflatable trampolines\n🤸 Professional trampolines\n🎢 Speed slides, including a 17-metre slide\n🧗 Rope course and rope swing\n🎯 Air cannons\n🧸 Toddler zone\n🏖️ Kinetic sand\n🎠 Carousels\n🎮 Arcade games"}
     await update.effective_message.reply_text(texts.get(lang,texts["ru"]), reply_markup=menu(lang))
 
 
@@ -652,11 +652,9 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text in ("🎟️ Цены", "🎟️ Narxlar", "🎟️ Prices"):
         return await prices(update, lang)
-    if text in ("🎂 День рождения", "🎂 Tug‘ilgan kun", "🎂 Birthday"):
-        return await birthday_gallery(update, lang)
-    if text in ("🎉 Забронировать день рождения", "🎉 Tug‘ilgan kunni bron qilish", "🎉 Book a Birthday"):
-        return await birthday_gallery(update, lang)
-    if text in ("📝 Забронировать день рождения", "📝 Tug‘ilgan kunni bron qilish", "📝 Book a Birthday"):
+    if text in ("🎂 День рождения", "🎂 Tug‘ilgan kun", "🎂 Birthday",
+                 "🎉 Забронировать день рождения", "🎉 Tug‘ilgan kunni bron qilish", "🎉 Book a Birthday",
+                 "📝 Забронировать день рождения", "📝 Tug‘ilgan kunni bron qilish", "📝 Book a Birthday"):
         return await birthday(update, context)
     if text in ("🎠 Развлечения", "🎠 Ko‘ngilochar", "🎠 Attractions"):
         return await attractions(update, lang)
