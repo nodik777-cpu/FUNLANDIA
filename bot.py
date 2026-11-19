@@ -973,6 +973,7 @@ async def log_bot_identity(application: Application):
     # Safe diagnostic: print Telegram bot identity only, never the token.
     me = await application.bot.get_me()
     print(f"TEST_BOT_IDENTITY id={me.id} username=@{me.username} name={me.first_name}", flush=True)
+    await init_booking_database(application)
 
 
 def main():
