@@ -225,6 +225,18 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["lang"] = lang
     question = raw.lower()
 
+    # Nanny availability is checked in person at the cashier; never answer that
+    # the service is unavailable because the bot has no live staffing data.
+    import re
+    if re.search(r"\\b(нян(?:я|ька|ьки|ьку)|nanny|babysitter|enaga|qarovul)\\b", question, re.IGNORECASE):
+        nanny_reply = {
+            "ru": "По поводу услуги няни, пожалуйста, уточните информацию на кассе. Если свободная няня есть, сотрудники кассы подскажут и предоставят её.",
+            "uz": "Enaga xizmati bo‘yicha, iltimos, kassadan ma’lumot oling. Agar bo‘sh enaga bo‘lsa, kassa xodimlari sizga yordam berishadi.",
+            "en": "Please ask at the cashier about the nanny service. If a nanny is available, the cashier staff will let you know and arrange it.",
+        }
+        await update.effective_message.reply_text(nanny_reply[lang])
+        return
+
     # Remember a child's age mentioned earlier and pass it explicitly to Gemini.
     age_match = (
         re.search(r"\b(\d{1,2})\s*(?:лет|года|год|месяц(?:а|ев)?|мес)\b", question)
@@ -689,6 +701,14 @@ async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🆔 Telegram ID: {user.id}\n"
         "⚠️ Дата не подтверждена. Требуется связаться с клиентом, проверить доступность, согласовать детали, стоимость и аванс."
     )
+    saved = False
+    try:
+        saved = await save_birthday_request(user, data, lang)
+        if not saved:
+            print("BOOKING_DB_SAVE_SKIPPED: database pool is unavailable", flush=True)
+    except Exception as exc:
+        print(f"BOOKING_DB_SAVE_ERROR: {type(exc).__name__}: {exc}", flush=True)
+
     sent = False
     if ADMIN_CHAT_ID:
         try:
@@ -916,13 +936,22 @@ async def business_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def init_booking_database(application: Application):
-    """Initialize persistent storage for birthday requests in the TEST PostgreSQL."""
+    """Initialize booking storage and acquire a PostgreSQL singleton lock."""
     global DB_POOL
     if not DATABASE_URL:
         print("BOOKING_DB_DISABLED: DATABASE_URL is not configured", flush=True)
-        return
+        raise RuntimeError("DATABASE_URL is required to enforce a single test-bot poller")
     try:
         import asyncpg
+        # Keep this dedicated connection open for the process lifetime. PostgreSQL
+        # releases the advisory lock automatically if the process/connection dies.
+        lock_connection = await asyncpg.connect(DATABASE_URL, command_timeout=15)
+        acquired = await lock_connection.fetchval("SELECT pg_try_advisory_lock(9107602613)")
+        if not acquired:
+            await lock_connection.close()
+            print("BOT_INSTANCE_LOCKED: another test-bot instance owns the polling lock; exiting", flush=True)
+            raise RuntimeError("Another test-bot instance is already active")
+        application.bot_data["polling_lock_connection"] = lock_connection
         DB_POOL = await asyncpg.create_pool(
             DATABASE_URL, min_size=1, max_size=3, command_timeout=15
         )
@@ -945,10 +974,11 @@ async def init_booking_database(application: Application):
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
-        print("BOOKING_DB_READY: birthday_requests table is available", flush=True)
+        print("BOOKING_DB_READY: birthday_requests table is available; polling lock acquired", flush=True)
     except Exception as exc:
         DB_POOL = None
         print(f"BOOKING_DB_ERROR: {type(exc).__name__}: {exc}", flush=True)
+        raise
 
 
 async def save_birthday_request(user, data, lang):
