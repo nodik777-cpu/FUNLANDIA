@@ -408,20 +408,20 @@ async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["birthday"] = {}
     context.user_data["birthday_step"] = 1
     intro = {
-        "ru": "🎂 ЗАЯВКА НА ДЕНЬ РОЖДЕНИЯ В FUNLANDIA\\n\\n"
-              "Ответьте на несколько вопросов — мы передадим заявку администратору.\\n"
+        "ru": "🎂 ЗАЯВКА НА ДЕНЬ РОЖДЕНИЯ В FUNLANDIA\n\n"
+              "Ответьте на несколько вопросов — мы передадим заявку администратору.\n"
               "📌 Важно: выбранная дата пока не подтверждает бронирование. "
-              "Администратор уточнит доступность даты, детали праздника и стоимость.\\n\\n"
+              "Администратор уточнит доступность даты, детали праздника и стоимость.\n\n"
               "🎂 Как зовут именинника?",
-        "uz": "🎂 FUNLANDIA'DA TUG‘ILGAN KUN UCHUN ARIZA\\n\\n"
-              "Bir nechta savolga javob bering — arizangiz administratorga yuboriladi.\\n"
+        "uz": "🎂 FUNLANDIA'DA TUG‘ILGAN KUN UCHUN ARIZA\n\n"
+              "Bir nechta savolga javob bering — arizangiz administratorga yuboriladi.\n"
               "📌 Muhim: tanlangan sana bron tasdiqlanganini anglatmaydi. "
-              "Administrator sana mavjudligi, bayram tafsilotlari va narxini aniqlashtiradi.\\n\\n"
+              "Administrator sana mavjudligi, bayram tafsilotlari va narxini aniqlashtiradi.\n\n"
               "🎂 Tug‘ilgan kun egasining ismi nima?",
-        "en": "🎂 FUNLANDIA BIRTHDAY REQUEST\\n\\n"
-              "Answer a few questions and we will forward your request to the administrator.\\n"
+        "en": "🎂 FUNLANDIA BIRTHDAY REQUEST\n\n"
+              "Answer a few questions and we will forward your request to the administrator.\n"
               "📌 Please note: your selected date does not confirm a booking. "
-              "The administrator will check availability and confirm the details and price.\\n\\n"
+              "The administrator will check availability and confirm the details and price.\n\n"
               "🎂 What is the birthday child’s name?",
     }
     await update.effective_message.reply_text(intro.get(lang, intro["ru"]))
@@ -550,7 +550,8 @@ async def donephoto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         return
-    key = context.user_data.get("setting_photo")    if not key:
+    key = context.user_data.get("setting_photo")
+    if not key:
         return
     photo = update.effective_message.photo[-1]
     photos = load_photos()
@@ -622,34 +623,34 @@ async def birthday_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["birthday_step"] = 9
     if lang == "ru":
         summary = (
-            "🎂 ПРОВЕРЬТЕ ЗАЯВКУ НА ДЕНЬ РОЖДЕНИЯ\\n\\n"
-            f"👤 Именинник: {data['name']}\\n🎈 Возраст: {data['age']}\\n"
-            f"📅 Желаемая дата: {data['date']}\\n👧👦 Детей: {data['children']}\\n"
-            f"👨‍👩‍👧‍👦 Взрослых: {data['adults']}\\n📞 Телефон: {data['phone']}\\n"
-            f"🎉 Формат праздника: {data['format']}\\n💬 Пожелания: {data['wishes']}\\n\\n"
-            "Нажмите «Подтвердить заявку», чтобы отправить её администратору.\\n"
+            "🎂 ПРОВЕРЬТЕ ЗАЯВКУ НА ДЕНЬ РОЖДЕНИЯ\n\n"
+            f"👤 Именинник: {data['name']}\n🎈 Возраст: {data['age']}\n"
+            f"📅 Желаемая дата: {data['date']}\n👧👦 Детей: {data['children']}\n"
+            f"👨‍👩‍👧‍👦 Взрослых: {data['adults']}\n📞 Телефон: {data['phone']}\n"
+            f"🎉 Формат праздника: {data['format']}\n💬 Пожелания: {data['wishes']}\n\n"
+            "Нажмите «Подтвердить заявку», чтобы отправить её администратору.\n"
             "Это заявка, а не подтверждение бронирования. Администратор уточнит доступность даты, детали и стоимость."
         )
         kb = [["✅ Подтвердить заявку", "✏️ Изменить"], ["🔙 Назад"]]
     elif lang == "uz":
         summary = (
-            "🎂 TUG‘ILGAN KUN ARIZASINI TEKSHIRING\\n\\n"
-            f"👤 Ism: {data['name']}\\n🎈 Yosh: {data['age']}\\n"
-            f"📅 Rejalashtirilgan sana: {data['date']}\\n👧👦 Bolalar: {data['children']}\\n"
-            f"👨‍👩‍👧‍👦 Kattalar: {data['adults']}\\n📞 Telefon: {data['phone']}\\n"
-            f"🎉 Bayram formati: {data['format']}\\n💬 Istaklar: {data['wishes']}\\n\\n"
-            "Arizani administratorga yuborish uchun «Arizani tasdiqlash» tugmasini bosing.\\n"
+            "🎂 TUG‘ILGAN KUN ARIZASINI TEKSHIRING\n\n"
+            f"👤 Ism: {data['name']}\n🎈 Yosh: {data['age']}\n"
+            f"📅 Rejalashtirilgan sana: {data['date']}\n👧👦 Bolalar: {data['children']}\n"
+            f"👨‍👩‍👧‍👦 Kattalar: {data['adults']}\n📞 Telefon: {data['phone']}\n"
+            f"🎉 Bayram formati: {data['format']}\n💬 Istaklar: {data['wishes']}\n\n"
+            "Arizani administratorga yuborish uchun «Arizani tasdiqlash» tugmasini bosing.\n"
             "Bu ariza, bron tasdig‘i emas. Administrator sana mavjudligi, tafsilotlar va narxni aniqlashtiradi."
         )
         kb = [["✅ Arizani tasdiqlash", "✏️ O‘zgartirish"], ["🔙 Orqaga"]]
     else:
         summary = (
-            "🎂 CHECK YOUR BIRTHDAY REQUEST\\n\\n"
-            f"👤 Birthday child: {data['name']}\\n🎈 Age: {data['age']}\\n"
-            f"📅 Requested date: {data['date']}\\n👧👦 Children: {data['children']}\\n"
-            f"👨‍👩‍👧‍👦 Adults: {data['adults']}\\n📞 Phone: {data['phone']}\\n"
-            f"🎉 Celebration format: {data['format']}\\n💬 Wishes: {data['wishes']}\\n\\n"
-            "Press “Confirm request” to send it to the administrator.\\n"
+            "🎂 CHECK YOUR BIRTHDAY REQUEST\n\n"
+            f"👤 Birthday child: {data['name']}\n🎈 Age: {data['age']}\n"
+            f"📅 Requested date: {data['date']}\n👧👦 Children: {data['children']}\n"
+            f"👨‍👩‍👧‍👦 Adults: {data['adults']}\n📞 Phone: {data['phone']}\n"
+            f"🎉 Celebration format: {data['format']}\n💬 Wishes: {data['wishes']}\n\n"
+            "Press “Confirm request” to send it to the administrator.\n"
             "This is a request, not a confirmed booking. The administrator will check availability, details and price."
         )
         kb = [["✅ Confirm request", "✏️ Edit"], ["🔙 Back"]]
@@ -675,13 +676,13 @@ async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     title, name_l, age_l, date_l, children_l, adults_l, phone_l, format_l, wishes_l = labels.get(lang, labels["ru"])
     msg = (
-        f"🎂 {title}\\n\\n"
-        f"👤 {name_l}: {data.get('name', '')}\\n🎈 {age_l}: {data.get('age', '')}\\n"
-        f"📅 {date_l}: {data.get('date', '')}\\n👧👦 {children_l}: {data.get('children', '')}\\n"
-        f"👨‍👩‍👧‍👦 {adults_l}: {data.get('adults', '')}\\n📞 {phone_l}: {data.get('phone', '')}\\n"
-        f"🎉 {format_l}: {data.get('format', '')}\\n💬 {wishes_l}: {data.get('wishes', '')}\\n\\n"
-        f"👥 Клиент: {display_name} ({username})\\n"
-        f"🆔 Telegram ID: {user.id}\\n"
+        f"🎂 {title}\n\n"
+        f"👤 {name_l}: {data.get('name', '')}\n🎈 {age_l}: {data.get('age', '')}\n"
+        f"📅 {date_l}: {data.get('date', '')}\n👧👦 {children_l}: {data.get('children', '')}\n"
+        f"👨‍👩‍👧‍👦 {adults_l}: {data.get('adults', '')}\n📞 {phone_l}: {data.get('phone', '')}\n"
+        f"🎉 {format_l}: {data.get('format', '')}\n💬 {wishes_l}: {data.get('wishes', '')}\n\n"
+        f"👥 Клиент: {display_name} ({username})\n"
+        f"🆔 Telegram ID: {user.id}\n"
         "⚠️ Дата не подтверждена. Требуется связаться с клиентом, проверить доступность, согласовать детали, стоимость и аванс."
     )
     sent = False
@@ -695,24 +696,24 @@ async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("birthday", None)
     context.user_data["lang"] = lang
     replies = {
-        "ru": "✅ Ваша заявка отправлена администратору FUNLANDIA.\\n\\n"
+        "ru": "✅ Ваша заявка отправлена администратору FUNLANDIA.\n\n"
               "📌 Это пока не является подтверждением бронирования. "
-              "Администратор уточнит доступность даты, детали праздника, стоимость и аванс.\\n"
+              "Администратор уточнит доступность даты, детали праздника, стоимость и аванс.\n"
               "Мы свяжемся с вами.",
-        "uz": "✅ Arizangiz FUNLANDIA administratoriga yuborildi.\\n\\n"
+        "uz": "✅ Arizangiz FUNLANDIA administratoriga yuborildi.\n\n"
               "📌 Bu hali bron tasdiqlanganini anglatmaydi. "
-              "Administrator sana mavjudligi, bayram tafsilotlari, narxi va avansni aniqlashtiradi.\\n"
+              "Administrator sana mavjudligi, bayram tafsilotlari, narxi va avansni aniqlashtiradi.\n"
               "Siz bilan bog‘lanamiz.",
-        "en": "✅ Your request has been sent to the FUNLANDIA administrator.\\n\\n"
+        "en": "✅ Your request has been sent to the FUNLANDIA administrator.\n\n"
               "📌 This is not a booking confirmation yet. "
-              "The administrator will check the date, celebration details, price and advance payment.\\n"
+              "The administrator will check the date, celebration details, price and advance payment.\n"
               "We will contact you.",
     }
     if not sent:
         replies = {
-            "ru": replies["ru"] + "\\n☎️ Если с вами не связались, позвоните: +998 55 512-73-37.",
-            "uz": replies["uz"] + "\\n☎️ Agar siz bilan bog‘lanishmasa: +998 55 512-73-37.",
-            "en": replies["en"] + "\\n☎️ If you are not contacted, call: +998 55 512-73-37.",
+            "ru": replies["ru"] + "\n☎️ Если с вами не связались, позвоните: +998 55 512-73-37.",
+            "uz": replies["uz"] + "\n☎️ Agar siz bilan bog‘lanishmasa: +998 55 512-73-37.",
+            "en": replies["en"] + "\n☎️ If you are not contacted, call: +998 55 512-73-37.",
         }
     await update.effective_message.reply_text(replies.get(lang, replies["ru"]), reply_markup=menu(lang))
 
@@ -726,9 +727,9 @@ async def birthday_confirm_or_edit(update: Update, context: ContextTypes.DEFAULT
         context.user_data["birthday_step"] = 1
         context.user_data["birthday"] = {}
         await update.effective_message.reply_text({
-            "ru": "Начнём заявку заново. 🎂\\n\\nКак зовут именинника?",
-            "uz": "Arizani boshidan boshlaymiz. 🎂\\n\\nTug‘ilgan kun egasining ismi nima?",
-            "en": "Let’s start the request again. 🎂\\n\\nWhat is the birthday child’s name?",
+            "ru": "Начнём заявку заново. 🎂\n\nКак зовут именинника?",
+            "uz": "Arizani boshidan boshlaymiz. 🎂\n\nTug‘ilgan kun egasining ismi nima?",
+            "en": "Let’s start the request again. 🎂\n\nWhat is the birthday child’s name?",
         }[lang])
         return True
     if text == confirm[lang]:
@@ -856,7 +857,8 @@ async def business_connection(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     if is_admin(update) and ADMIN_CHAT_ID:
-        rights = getattr(connection, "rights", None)        can_reply = getattr(rights, "can_reply", False)
+        rights = getattr(connection, "rights", None)
+        can_reply = getattr(rights, "can_reply", False)
         status = "разрешены" if can_reply else "не подтверждены"
         try:
             await context.bot.send_message(
