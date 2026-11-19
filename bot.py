@@ -771,11 +771,17 @@ async def business_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def log_bot_identity(application: Application):
+    # Safe diagnostic: print Telegram bot identity only, never the token.
+    me = await application.bot.get_me()
+    print(f"TEST_BOT_IDENTITY id={me.id} username=@{me.username} name={me.first_name}", flush=True)
+
+
 def main():
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN is not set")
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(log_bot_identity).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setphoto", setphoto))
