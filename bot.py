@@ -218,8 +218,10 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import re
     short_followup = len(raw.split()) <= 3 and not re.search(
         r"\b(hello|hi|salom|assalomu|rahmat|narxi|qancha|bolalar|maydoncha|batut|"
+        r"bormi|bor-mi|necha|yosh|soat|iltimos|mumkinmi|"
         r"привет|здравствуйте|сколько|цена|ребён|ребен|площадк|батут|"
-        r"yosh|soat|hours?|час|лет|года)\b", raw.lower()
+        r"нян\w*|nanny|babysitter|enaga|борми|бор\w*|"
+        r"hours?|час|лет|года)\b", raw.lower()
     )
     lang = fallback_lang if short_followup else detect_message_language(raw, fallback_lang)
     context.user_data["lang"] = lang
