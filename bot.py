@@ -6,6 +6,8 @@ from ai_assistant import answer_customer
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID", "")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+DB_POOL = None
 
 ADMIN_PHONE = "+998 93 381 00 55"
 CALL_CENTER = "+998 55 512-73-37"
@@ -911,6 +913,60 @@ async def business_redirect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "После выбора откроется бот FUNLANDIA на выбранном языке. / After selection, FUNLANDIA will open in your language.",
         reply_markup=keyboard,
     )
+
+
+async def init_booking_database(application: Application):
+    """Initialize persistent storage for birthday requests in the TEST PostgreSQL."""
+    global DB_POOL
+    if not DATABASE_URL:
+        print("BOOKING_DB_DISABLED: DATABASE_URL is not configured", flush=True)
+        return
+    try:
+        import asyncpg
+        DB_POOL = await asyncpg.create_pool(
+            DATABASE_URL, min_size=1, max_size=3, command_timeout=15
+        )
+        await DB_POOL.execute("""
+            CREATE TABLE IF NOT EXISTS birthday_requests (
+                id BIGSERIAL PRIMARY KEY,
+                telegram_user_id BIGINT NOT NULL,
+                telegram_username TEXT,
+                customer_name TEXT NOT NULL,
+                child_name TEXT NOT NULL,
+                child_age TEXT,
+                requested_date TEXT NOT NULL,
+                children_count TEXT,
+                adults_count TEXT,
+                phone TEXT NOT NULL,
+                celebration_format TEXT,
+                wishes TEXT,
+                language TEXT NOT NULL DEFAULT 'ru',
+                status TEXT NOT NULL DEFAULT 'new',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+        print("BOOKING_DB_READY: birthday_requests table is available", flush=True)
+    except Exception as exc:
+        DB_POOL = None
+        print(f"BOOKING_DB_ERROR: {type(exc).__name__}: {exc}", flush=True)
+
+
+async def save_birthday_request(user, data, lang):
+    if DB_POOL is None:
+        return False
+    await DB_POOL.execute("""
+        INSERT INTO birthday_requests (
+            telegram_user_id, telegram_username, customer_name, child_name,
+            child_age, requested_date, children_count, adults_count, phone,
+            celebration_format, wishes, language
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    """,
+        user.id, user.username, user.full_name or "Без имени",
+        data.get("name", ""), data.get("age", ""), data.get("date", ""),
+        data.get("children", ""), data.get("adults", ""), data.get("phone", ""),
+        data.get("format", ""), data.get("wishes", ""), lang
+    )
+    return True
 
 
 async def log_bot_identity(application: Application):
