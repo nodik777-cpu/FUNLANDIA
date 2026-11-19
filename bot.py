@@ -177,7 +177,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Deep links from the Mini App must open the matching bot section,
     # not fall through to the generic welcome screen.
-    if action == "question":        prompts = {
+    if action == "question":
+        prompts = {
             "ru": "💬 Напишите ваш вопрос — я с радостью помогу!",
             "uz": "💬 Savolingizni yozing — mamnuniyat bilan yordam beraman!",
             "en": "💬 Type your question — I’ll be happy to help!",
@@ -356,7 +357,8 @@ async def contacts(update: Update, lang):
         ),
     }
     buttons = [
-        [            InlineKeyboardButton("📱 Telegram", url=TELEGRAM),
+        [
+            InlineKeyboardButton("📱 Telegram", url=TELEGRAM),
             InlineKeyboardButton("📸 Instagram", url=INSTAGRAM),
         ],
         [
