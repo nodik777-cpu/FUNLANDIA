@@ -713,9 +713,9 @@ async def finish_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     if not sent:
         replies = {
-            "ru": replies["ru"] + "\n☎️ Если с вами не связались, позвоните: +998 55 512-73-37.",
-            "uz": replies["uz"] + "\n☎️ Agar siz bilan bog‘lanishmasa: +998 55 512-73-37.",
-            "en": replies["en"] + "\n☎️ If you are not contacted, call: +998 55 512-73-37.",
+            "ru": "⚠️ Заявка заполнена, но не отправлена администратору: канал администратора пока не настроен. Позвоните, пожалуйста: +998 55 512-73-37 и сообщите данные заявки.",
+            "uz": "⚠️ Ariza to‘ldirildi, lekin administrator kanali sozlanmagani uchun yuborilmadi. Iltimos, +998 55 512-73-37 raqamiga qo‘ng‘iroq qilib, ariza ma’lumotlarini ayting.",
+            "en": "⚠️ Your request is complete but was not sent because the administrator channel is not configured. Please call +998 55 512-73-37 and provide your request details.",
         }
     await update.effective_message.reply_text(replies.get(lang, replies["ru"]), reply_markup=menu(lang))
 
