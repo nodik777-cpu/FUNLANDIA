@@ -228,7 +228,7 @@ async def secretary_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Nanny availability is checked in person at the cashier; never answer that
     # the service is unavailable because the bot has no live staffing data.
     import re
-    if re.search(r"\\b(нян(?:я|ька|ьки|ьку)|nanny|babysitter|enaga|qarovul)\\b", question, re.IGNORECASE):
+    if re.search(r"\b(нян\w*|nanny|babysitter|enaga|qarovul)\b", question, re.IGNORECASE):
         nanny_reply = {
             "ru": "По поводу услуги няни, пожалуйста, уточните информацию на кассе. Если свободная няня есть, сотрудники кассы подскажут и предоставят её.",
             "uz": "Enaga xizmati bo‘yicha, iltimos, kassadan ma’lumot oling. Agar bo‘sh enaga bo‘lsa, kassa xodimlari sizga yordam berishadi.",
