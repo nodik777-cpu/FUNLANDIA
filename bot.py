@@ -1,7 +1,7 @@
 import os
 import json
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, KeyboardButton, WebAppInfo
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, BusinessConnectionHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, BusinessConnectionHandler, filters
 from ai_assistant import answer_customer
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -1001,6 +1001,115 @@ async def save_birthday_request(user, data, lang):
     return True
 
 
+async def admin_authorized(update: Update) -> bool:
+    user = update.effective_user
+    return bool(user and ADMIN_CHAT_ID and str(user.id) == str(ADMIN_CHAT_ID))
+
+
+async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await admin_authorized(update):
+        await update.effective_message.reply_text("⛔ Нет доступа.")
+        return
+    if DB_POOL is None:
+        await update.effective_message.reply_text("База заявок пока недоступна. Проверьте состояние тестового бота.")
+        return
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📅 Заявки на сегодня", callback_data="adm:list:today")],
+        [InlineKeyboardButton("📋 Все заявки", callback_data="adm:list:all")],
+    ])
+    await update.effective_message.reply_text("🎂 FUNLANDIA — управление заявками", reply_markup=keyboard)
+
+
+async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    if not await admin_authorized(update):
+        await query.answer("Нет доступа", show_alert=True)
+        return
+    await query.answer()
+    if DB_POOL is None:
+        await query.edit_message_text("База заявок пока недоступна.")
+        return
+    action = (query.data or "").split(":")
+    if len(action) == 3 and action[0] == "adm" and action[1] == "list":
+        if action[2] == "today":
+            rows = await DB_POOL.fetch("""
+                SELECT id, child_name, requested_date, phone, status, created_at
+                FROM birthday_requests
+                WHERE created_at >= date_trunc('day', now() AT TIME ZONE 'Asia/Tashkent')
+                                      AT TIME ZONE 'Asia/Tashkent'
+                  AND created_at < (date_trunc('day', now() AT TIME ZONE 'Asia/Tashkent') + interval '1 day')
+                                      AT TIME ZONE 'Asia/Tashkent'
+                ORDER BY created_at DESC LIMIT 30
+            """)
+            heading = "📅 Заявки, поступившие сегодня"
+        else:
+            rows = await DB_POOL.fetch("""
+                SELECT id, child_name, requested_date, phone, status, created_at
+                FROM birthday_requests ORDER BY created_at DESC LIMIT 50
+            """)
+            heading = "📋 Последние заявки"
+        if not rows:
+            await query.edit_message_text(heading + "\n\nПока заявок нет.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Меню", callback_data="adm:menu")]]))
+            return
+        buttons = []
+        lines = [heading, ""]
+        for row in rows:
+            status = {"new":"🆕 Новая","confirmed":"✅ Подтверждена","rejected":"❌ Отклонена"}.get(row["status"], row["status"])
+            lines.append(f"№{row['id']} · {row['child_name']} · дата праздника: {row['requested_date']} · {status}")
+            buttons.append([InlineKeyboardButton(f"Открыть №{row['id']} — {row['child_name']}", callback_data=f"adm:view:{row['id']}")])
+        buttons.append([InlineKeyboardButton("⬅️ Меню", callback_data="adm:menu")])
+        await query.edit_message_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(buttons))
+        return
+    if len(action) == 2 and action == ["adm", "menu"]:
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📅 Заявки на сегодня", callback_data="adm:list:today")],
+            [InlineKeyboardButton("📋 Все заявки", callback_data="adm:list:all")],
+        ])
+        await query.edit_message_text("🎂 FUNLANDIA — управление заявками", reply_markup=keyboard)
+        return
+    if len(action) == 3 and action[0] == "adm" and action[1] == "view":
+        row = await DB_POOL.fetchrow("SELECT * FROM birthday_requests WHERE id=$1", int(action[2]))
+        if not row:
+            await query.edit_message_text("Заявка не найдена.")
+            return
+        status = {"new":"🆕 Новая","confirmed":"✅ Подтверждена","rejected":"❌ Отклонена"}.get(row["status"], row["status"])
+        username = "@" + row["telegram_username"] if row["telegram_username"] else "нет username"
+        body = (
+            f"🎂 ЗАЯВКА №{row['id']}\n\n"
+            f"Статус: {status}\n"
+            f"Именинник: {row['child_name']}\nВозраст: {row['child_age']}\n"
+            f"Дата праздника: {row['requested_date']}\n"
+            f"Детей: {row['children_count']}\nВзрослых: {row['adults_count']}\n"
+            f"Телефон: {row['phone']}\nФормат: {row['celebration_format']}\n"
+            f"Пожелания: {row['wishes']}\n\n"
+            f"Клиент: {row['customer_name']} ({username})\nTelegram ID: {row['telegram_user_id']}\n"
+            f"Получена: {row['created_at'].astimezone().strftime('%d.%m.%Y %H:%M')}"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Подтвердить", callback_data=f"adm:status:{row['id']}:confirmed"),
+             InlineKeyboardButton("❌ Отклонить", callback_data=f"adm:status:{row['id']}:rejected")],
+            [InlineKeyboardButton("⬅️ К заявкам", callback_data="adm:list:all")]
+        ])
+        await query.edit_message_text(body, reply_markup=keyboard)
+        return
+    if len(action) == 4 and action[0] == "adm" and action[1] == "status":
+        request_id, new_status = int(action[2]), action[3]
+        if new_status not in ("confirmed", "rejected"):
+            return
+        row = await DB_POOL.fetchrow(
+            "UPDATE birthday_requests SET status=$2 WHERE id=$1 RETURNING id, child_name",
+            request_id, new_status
+        )
+        if not row:
+            await query.edit_message_text("Заявка не найдена.")
+            return
+        label = "подтверждена" if new_status == "confirmed" else "отклонена"
+        await query.edit_message_text(f"Заявка №{row['id']} ({row['child_name']}) {label}.\n\nОткройте /admin для продолжения.")
+        return
+
+
 async def log_bot_identity(application: Application):
     # Safe diagnostic: print Telegram bot identity only, never the token.
     me = await application.bot.get_me()
@@ -1015,6 +1124,8 @@ def main():
     app = Application.builder().token(BOT_TOKEN).post_init(log_bot_identity).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("admin", admin_menu))
+    app.add_handler(CallbackQueryHandler(admin_callback, pattern=r"^adm:"))
     app.add_handler(CommandHandler("setphoto", setphoto))
     app.add_handler(CommandHandler("setpromo", setpromo))
     app.add_handler(CommandHandler("donephoto", donephoto))
