@@ -37,13 +37,14 @@ function validTelegramInitData(initData) {
 function json(data, status=200) {
   return new Response(JSON.stringify(data), {status, headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","access-control-allow-origin":"*"}});
 }
-function html() {
-  return new Response(readFileSync(new URL("./index.html", import.meta.url)), {headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
+function html(file="index.html") {
+  return new Response(readFileSync(new URL("./" + file, import.meta.url)), {headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
 }
 async function handler(req) {
   const url = new URL(req.url);
   if (url.pathname === "/health") return new Response("ok");
-  if (url.pathname === "/" && req.method === "GET") return html();
+  if (url.pathname === "/" && req.method === "GET") return html("public.html");
+  if (url.pathname === "/admin" && req.method === "GET") return html("index.html");
   if (url.pathname === "/api/health" && req.method === "GET") return json({ok:true});
   if (!url.pathname.startsWith("/api/")) return new Response("Not found",{status:404});
   const user = validTelegramInitData(req.headers.get("x-telegram-init-data") || "");
