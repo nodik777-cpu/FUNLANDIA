@@ -43,6 +43,14 @@ function html(file="index.html") {
 async function handler(req) {
   const url = new URL(req.url);
   if (url.pathname === "/health") return new Response("ok");
+  if (url.pathname === "/ready") {
+    try {
+      const rows = await sql`SELECT to_regclass('public.birthday_requests') AS table_name`;
+      return rows[0]?.table_name ? new Response("ready") : new Response("schema missing", {status:503});
+    } catch {
+      return new Response("database unavailable", {status:503});
+    }
+  }
   if (url.pathname === "/" && req.method === "GET") return html("public.html");
   if (url.pathname === "/admin" && req.method === "GET") return html("index.html");
   if (url.pathname === "/api/health" && req.method === "GET") return json({ok:true});
