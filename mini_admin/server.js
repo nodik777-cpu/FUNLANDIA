@@ -1,5 +1,7 @@
 import postgres from "postgres";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
 
 const PORT = Number(process.env.PORT || 8080);
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -36,7 +38,7 @@ function json(data, status=200) {
   return new Response(JSON.stringify(data), {status, headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","access-control-allow-origin":"*"}});
 }
 function html() {
-  return new Response(Bun.file(new URL("./index.html", import.meta.url)), {headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
+  return new Response(readFileSync(new URL("./index.html", import.meta.url)), {headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
 }
 async function handler(req) {
   const url = new URL(req.url);
@@ -80,5 +82,22 @@ async function handler(req) {
     return json({error:"Ошибка базы данных"},500);
   }
 }
-Bun.serve({port:PORT,fetch:handler});
-console.log("FUNLANDIA_ADMIN_READY port="+PORT);
+const server = createServer(async (req, res) => {
+  try {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const body = Buffer.concat(chunks);
+    const request = new Request("http://127.0.0.1" + (req.url || "/"), {
+      method: req.method,
+      headers: req.headers,
+      body: ["GET","HEAD"].includes(req.method || "GET") ? undefined : body
+    });
+    const response = await handler(request);
+    res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+    res.end(Buffer.from(await response.arrayBuffer()));
+  } catch (e) {
+    console.error("HTTP_SERVER_ERROR", e?.message || e);
+    res.writeHead(500); res.end("Internal Server Error");
+  }
+});
+server.listen(PORT, "0.0.0.0", () => console.log("FUNLANDIA_ADMIN_READY port=" + PORT));
