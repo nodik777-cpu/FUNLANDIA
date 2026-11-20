@@ -1,0 +1,11 @@
+{
+  "name": "funlandia-admin",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun run server.js"
+  },
+  "dependencies": {
+    "postgres": "^3.4.7"
+  }
+}
