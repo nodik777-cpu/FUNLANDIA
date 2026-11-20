@@ -100,4 +100,12 @@ const server = createServer(async (req, res) => {
     res.writeHead(500); res.end("Internal Server Error");
   }
 });
-server.listen(PORT, "0.0.0.0", () => console.log("FUNLANDIA_ADMIN_READY port=" + PORT));
+server.listen(PORT, "0.0.0.0", async () => {
+  try {
+    await sql`SELECT 1`;
+    const rows = await sql`SELECT to_regclass('public.birthday_requests') AS table_name`;
+    console.log("FUNLANDIA_ADMIN_READY port=" + PORT + " database=" + (rows[0]?.table_name ? "connected" : "schema_missing"));
+  } catch (e) {
+    console.error("FUNLANDIA_ADMIN_DATABASE_STARTUP_ERROR", e?.message || e);
+  }
+});
