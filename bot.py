@@ -1014,7 +1014,7 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("База заявок пока недоступна. Проверьте состояние тестового бота.")
         return
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🖥 Открыть панель администратора", web_app=WebAppInfo(url="https://funlandia-mini-app-test.up.railway.app/"))],
+        [InlineKeyboardButton("🖥 Открыть панель администратора", web_app=WebAppInfo(url="https://funlandia-mini-app-test.up.railway.app/admin"))],
         [InlineKeyboardButton("📅 Заявки на сегодня", callback_data="adm:list:today")],
         [InlineKeyboardButton("📋 Все заявки", callback_data="adm:list:all")],
     ])
