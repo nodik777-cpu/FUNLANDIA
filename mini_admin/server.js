@@ -164,6 +164,53 @@ async function handler(req) {
   const user = validTelegramInitData(req.headers.get("x-telegram-init-data") || "");
   if (!user) return json({error:"Нет доступа. Откройте панель из Telegram под аккаунтом администратора."},401);
   try {
+    if (url.pathname === "/api/bookings" && req.method === "GET") {
+      const month = url.searchParams.get("month") || "";
+      if (!/^\\d{4}-\\d{2}$/.test(month)) return json({error:"Укажите месяц в формате YYYY-MM."},400);
+      const [year,mon] = month.split("-").map(Number);
+      const nextMonth = mon === 12 ? (year+1)+"-01" : year+"-"+String(mon+1).padStart(2,"0");
+      const from = new Date(month+"-01T00:00:00+05:00");
+      const to = new Date(nextMonth+"-01T00:00:00+05:00");
+      const rows = await sql`SELECT id,public_code,customer_name,child_name,child_age,phone,
+        children_count,zone_no,starts_at,ends_at,status,deposit_amount,created_at
+        FROM birthday_bookings WHERE starts_at >= ${from} AND starts_at < ${to}
+        ORDER BY starts_at,zone_no LIMIT 500`;
+      return json(rows);
+    }
+    const bookingMatch = url.pathname.match(/^\\/api\\/bookings\\/(\\d+)$/);
+    if (bookingMatch && req.method === "PATCH") {
+      const body = await req.json();
+      if (!["confirmed","rejected","cancelled"].includes(body.status))
+        return json({error:"Недопустимый статус бронирования."},400);
+      const bookingId = Number(bookingMatch[1]);
+      const rows = await sql`UPDATE birthday_bookings SET status=${body.status},updated_at=now()
+        WHERE id=${bookingId} AND status IN ('awaiting_admin','confirmed','rejected','cancelled')
+        RETURNING id,public_code,telegram_user_id,language,child_name,starts_at,zone_no,status`;
+      if (!rows.length) return json({error:"Заявка не найдена или уже обрабатывается."},404);
+      const booking = rows[0];
+      await sql`INSERT INTO birthday_admin_actions (booking_id,admin_telegram_id,action,note)
+        VALUES (${booking.id},${user.id},${body.status === "confirmed" ? "confirm" : body.status === "rejected" ? "reject" : "note"},${String(body.note || "").slice(0,500)})`;
+      const dateText = new Date(booking.starts_at).toLocaleString("ru-RU",{timeZone:"Asia/Tashkent",dateStyle:"long",timeStyle:"short"});
+      const messages = {
+        ru: body.status === "confirmed"
+          ? "✅ Ваша бронь FUNLANDIA "+booking.public_code+" подтверждена. "+dateText+", зона №"+booking.zone_no+". Администратор свяжется с вами по авансу 100 000 сум."
+          : body.status === "rejected"
+          ? "К сожалению, заявка FUNLANDIA "+booking.public_code+" отклонена. Пожалуйста, выберите другое время или свяжитесь с нами."
+          : "Бронь FUNLANDIA "+booking.public_code+" отменена.",
+        uz: body.status === "confirmed"
+          ? "✅ FUNLANDIA "+booking.public_code+" broningiz tasdiqlandi. "+dateText+", "+booking.zone_no+"-zona. Administrator 100 000 so'm avans bo'yicha siz bilan bog'lanadi."
+          : body.status === "rejected"
+          ? "Afsuski, FUNLANDIA "+booking.public_code+" arizasi rad etildi. Iltimos, boshqa vaqtni tanlang yoki biz bilan bog'laning."
+          : "FUNLANDIA "+booking.public_code+" broningiz bekor qilindi.",
+        en: body.status === "confirmed"
+          ? "✅ Your FUNLANDIA booking "+booking.public_code+" is confirmed. "+dateText+", Zone "+booking.zone_no+". The administrator will contact you about the 100,000 UZS deposit."
+          : body.status === "rejected"
+          ? "Unfortunately, your FUNLANDIA request "+booking.public_code+" was declined. Please choose another time or contact us."
+          : "Your FUNLANDIA booking "+booking.public_code+" was cancelled."
+      };
+      await telegramSend(booking.telegram_user_id,messages[booking.language] || messages.ru);
+      return json({ok:true,id:booking.id,status:booking.status});
+    }
     if (url.pathname === "/api/summary" && req.method === "GET") {
       const [today] = await sql`SELECT count(*)::int AS count FROM birthday_requests WHERE created_at >= (date_trunc('day', now() AT TIME ZONE 'Asia/Tashkent') AT TIME ZONE 'Asia/Tashkent') AND created_at < ((date_trunc('day', now() AT TIME ZONE 'Asia/Tashkent') + interval '1 day') AT TIME ZONE 'Asia/Tashkent')`;
       const [all] = await sql`SELECT count(*)::int AS count FROM birthday_requests`;
