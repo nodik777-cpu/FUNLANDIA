@@ -423,26 +423,45 @@ async def funlandia(update: Update, lang):
 
 async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "ru")
+    # The new hybrid flow starts in the Telegram Mini App calendar. The old
+    # chat questionnaire remains active as a fallback if the customer types
+    # an answer instead of opening the calendar.
     context.user_data["birthday"] = {}
     context.user_data["birthday_step"] = 1
     intro = {
-        "ru": "🎂 ЗАЯВКА НА ДЕНЬ РОЖДЕНИЯ В FUNLANDIA\n\n"
-              "Ответьте на несколько вопросов — мы передадим заявку администратору.\n"
-              "📌 Важно: выбранная дата пока не подтверждает бронирование. "
-              "Администратор уточнит доступность даты, детали праздника и стоимость.\n\n"
-              "🎂 Как зовут именинника?",
-        "uz": "🎂 FUNLANDIA'DA TUG‘ILGAN KUN UCHUN ARIZA\n\n"
-              "Bir nechta savolga javob bering — arizangiz administratorga yuboriladi.\n"
-              "📌 Muhim: tanlangan sana bron tasdiqlanganini anglatmaydi. "
-              "Administrator sana mavjudligi, bayram tafsilotlari va narxini aniqlashtiradi.\n\n"
-              "🎂 Tug‘ilgan kun egasining ismi nima?",
-        "en": "🎂 FUNLANDIA BIRTHDAY REQUEST\n\n"
-              "Answer a few questions and we will forward your request to the administrator.\n"
-              "📌 Please note: your selected date does not confirm a booking. "
-              "The administrator will check availability and confirm the details and price.\n\n"
-              "🎂 What is the birthday child’s name?",
+        "ru": "🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA\n\n"
+              "Выберите зону, дату и свободное время в календаре.\n"
+              "После отправки заявка временно занимает выбранное время и поступает администратору. "
+              "Бронирование станет подтверждённым только после проверки администратором.\n\n"
+              "📅 Нажмите кнопку ниже, чтобы открыть календарь.\n\n"
+              "Если хотите, можете продолжить заполнение заявки прямо в чате. "
+              "Для этого просто напишите имя именинника.",
+        "uz": "🎂 FUNLANDIA'DA TUG‘ILGAN KUN\n\n"
+              "Kalendar orqali zona, sana va bo‘sh vaqtni tanlang.\n"
+              "Ariza yuborilgach, tanlangan vaqt vaqtincha band qilinadi va administratorga yuboriladi. "
+              "Bron faqat administrator tekshirganidan keyin tasdiqlanadi.\n\n"
+              "📅 Kalendarni ochish uchun quyidagi tugmani bosing.\n\n"
+              "Xohlasangiz, arizani chat orqali ham davom ettirishingiz mumkin. "
+              "Buning uchun tug‘ilgan kun egasining ismini yozing.",
+        "en": "🎂 BIRTHDAY AT FUNLANDIA\n\n"
+              "Choose a zone, date and available time in the calendar.\n"
+              "After submission, the selected time is temporarily reserved and sent to the administrator. "
+              "The booking is confirmed only after the administrator reviews it.\n\n"
+              "📅 Tap the button below to open the calendar.\n\n"
+              "You can also continue the old request form in this chat by typing the birthday child's name.",
     }
-    await update.effective_message.reply_text(intro.get(lang, intro["ru"]))
+    button = {
+        "ru": "📅 Открыть календарь бронирования",
+        "uz": "📅 Bron kalendarini ochish",
+        "en": "📅 Open booking calendar",
+    }
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            button.get(lang, button["ru"]),
+            web_app=WebAppInfo(url="https://funlandia-mini-app-test.up.railway.app/booking")
+        )
+    ]])
+    await update.effective_message.reply_text(intro.get(lang, intro["ru"]), reply_markup=keyboard)
 
 
 async def september_promo(update: Update, context: ContextTypes.DEFAULT_TYPE, lang):
