@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS birthday_bookings (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (ends_at > starts_at),
-    CHECK (ends_at - starts_at = interval '4 hours')
 );
 
 ALTER TABLE birthday_bookings ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'ru';
@@ -43,7 +42,7 @@ UPDATE birthday_bookings SET planned_ends_at=ends_at WHERE planned_ends_at IS NU
 
 -- Existing bookings keep their original planned end; ends_at becomes the actual occupancy end
 -- when an administrator releases a zone early.
-DO $
+DO $migration$
 DECLARE c RECORD;
 BEGIN
   FOR c IN SELECT conname FROM pg_constraint
@@ -53,7 +52,7 @@ BEGIN
   LOOP
     EXECUTE format('ALTER TABLE birthday_bookings DROP CONSTRAINT %I', c.conname);
   END LOOP;
-END $;
+END $migration$;
 
 ALTER TABLE birthday_bookings DROP CONSTRAINT IF EXISTS birthday_bookings_status_check;
 ALTER TABLE birthday_bookings ADD CONSTRAINT birthday_bookings_status_check
