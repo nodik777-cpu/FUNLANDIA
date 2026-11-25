@@ -68,10 +68,10 @@ for(const slot of item.slots){const b=document.createElement("button");b.classNa
 document.querySelectorAll(".zone").forEach(b=>b.onclick=()=>{document.querySelectorAll(".zone").forEach(x=>x.classList.toggle("active",x===b));state.zone=Number(b.dataset.zone);loadCalendar()});
 $("prev").onclick=()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()-1,1);loadCalendar()};
 $("next").onclick=()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()+1,1);loadCalendar()};
-$("bookingForm").onsubmit=async e=>{e.preventDefault();if(!state.date||!state.time){showMessage("Выберите дату и время.",false);return}
-const form=new FormData(e.currentTarget);const payload=Object.fromEntries(form.entries());payload.zone_no=state.zone;payload.date=state.date;payload.time=state.time;payload.language=lang;
+$("bookingForm").onsubmit=async e=>{e.preventDefault();const formElement=e.currentTarget;if(!state.date||!state.time){showMessage("Выберите дату и время.",false);return}
+const formData=new FormData(formElement);const payload=Object.fromEntries(formData.entries());payload.zone_no=state.zone;payload.date=state.date;payload.time=state.time;payload.language=lang;
 $("submit").disabled=true;$("submit").textContent="Отправляем…";
-try{const result=await api("/api/public/bookings",{method:"POST",body:JSON.stringify(payload)});showMessage("Заявка №"+result.booking.public_code+" отправлена! "+result.message,true);e.currentTarget.reset();$("customerName").value=[user.first_name,user.last_name].filter(Boolean).join(" ");$("slots").innerHTML="";$("slotPrompt").textContent="Заявка принята. Вы можете выбрать другую дату после обновления календаря.";await loadCalendar()}
+try{const result=await api("/api/public/bookings",{method:"POST",body:JSON.stringify(payload)});showMessage("Заявка №"+result.booking.public_code+" отправлена! "+result.message,true);formElement.reset();$("customerName").value=[user.first_name,user.last_name].filter(Boolean).join(" ");$("slots").innerHTML="";$("slotPrompt").textContent="Заявка принята. Вы можете выбрать другую дату после обновления календаря.";await loadCalendar()}
 catch(err){showMessage(err.message,false);$("submit").disabled=false}
 finally{$("submit").textContent="Отправить заявку"}
 };
