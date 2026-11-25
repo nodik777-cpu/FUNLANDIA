@@ -423,32 +423,26 @@ async def funlandia(update: Update, lang):
 
 async def birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = context.user_data.get("lang", "ru")
-    # The new hybrid flow starts in the Telegram Mini App calendar. The old
-    # chat questionnaire remains active as a fallback if the customer types
-    # an answer instead of opening the calendar.
-    context.user_data["birthday"] = {}
-    context.user_data["birthday_step"] = 1
+    # The new hybrid flow starts in the Telegram Mini App calendar. Do not
+    # start the legacy free-text questionnaire here: it bypasses live slot holds.
+    context.user_data.pop("birthday", None)
+    context.user_data.pop("birthday_step", None)
     intro = {
         "ru": "🎂 ДЕНЬ РОЖДЕНИЯ В FUNLANDIA\n\n"
               "Выберите зону, дату и свободное время в календаре.\n"
               "После отправки заявка временно занимает выбранное время и поступает администратору. "
               "Бронирование станет подтверждённым только после проверки администратором.\n\n"
-              "📅 Нажмите кнопку ниже, чтобы открыть календарь.\n\n"
-              "Если хотите, можете продолжить заполнение заявки прямо в чате. "
-              "Для этого просто напишите имя именинника.",
+              "📅 Нажмите кнопку ниже, чтобы открыть календарь и отправить заявку.",
         "uz": "🎂 FUNLANDIA'DA TUG‘ILGAN KUN\n\n"
               "Kalendar orqali zona, sana va bo‘sh vaqtni tanlang.\n"
               "Ariza yuborilgach, tanlangan vaqt vaqtincha band qilinadi va administratorga yuboriladi. "
               "Bron faqat administrator tekshirganidan keyin tasdiqlanadi.\n\n"
-              "📅 Kalendarni ochish uchun quyidagi tugmani bosing.\n\n"
-              "Xohlasangiz, arizani chat orqali ham davom ettirishingiz mumkin. "
-              "Buning uchun tug‘ilgan kun egasining ismini yozing.",
+              "📅 Kalendarni ochish va ariza yuborish uchun quyidagi tugmani bosing.",
         "en": "🎂 BIRTHDAY AT FUNLANDIA\n\n"
               "Choose a zone, date and available time in the calendar.\n"
               "After submission, the selected time is temporarily reserved and sent to the administrator. "
               "The booking is confirmed only after the administrator reviews it.\n\n"
-              "📅 Tap the button below to open the calendar.\n\n"
-              "You can also continue the old request form in this chat by typing the birthday child's name.",
+              "📅 Tap the button below to open the calendar and submit your request.",
     }
     button = {
         "ru": "📅 Открыть календарь бронирования",
