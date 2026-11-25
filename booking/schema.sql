@@ -22,12 +22,15 @@ CREATE TABLE IF NOT EXISTS birthday_bookings (
       CHECK (status IN ('held','awaiting_payment','awaiting_admin','confirmed','rejected','cancelled','expired')),
     hold_expires_at TIMESTAMPTZ,
     extras TEXT,
+    language TEXT NOT NULL DEFAULT 'ru',
     admin_note TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (ends_at > starts_at),
     CHECK (ends_at - starts_at = interval '4 hours')
 );
+
+ALTER TABLE birthday_bookings ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'ru';
 
 -- Prevent two active reservations/holds from occupying the same zone at overlapping times.
 ALTER TABLE birthday_bookings
