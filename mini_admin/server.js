@@ -166,7 +166,7 @@ async function handler(req) {
   try {
     if (url.pathname === "/api/bookings" && req.method === "GET") {
       const month = url.searchParams.get("month") || "";
-      if (!/^\\d{4}-\\d{2}$/.test(month)) return json({error:"Укажите месяц в формате YYYY-MM."},400);
+      if (!/^\d{4}-\d{2}$/.test(month)) return json({error:"Укажите месяц в формате YYYY-MM."},400);
       const [year,mon] = month.split("-").map(Number);
       const nextMonth = mon === 12 ? (year+1)+"-01" : year+"-"+String(mon+1).padStart(2,"0");
       const from = new Date(month+"-01T00:00:00+05:00");
@@ -177,7 +177,7 @@ async function handler(req) {
         ORDER BY starts_at,zone_no LIMIT 500`;
       return json(rows);
     }
-    const bookingMatch = url.pathname.match(/^\\/api\\/bookings\\/(\\d+)$/);
+    const bookingMatch = url.pathname.match(/^\/api\/bookings\/(\d+)$/);
     if (bookingMatch && req.method === "PATCH") {
       const body = await req.json();
       if (!["confirmed","rejected","cancelled"].includes(body.status))
