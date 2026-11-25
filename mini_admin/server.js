@@ -69,10 +69,11 @@ async function publicBookingApi(req, url) {
     const monthStart = new Date(month + "-01T00:00:00+05:00");
     const nextMonth = mon === 12 ? (year + 1) + "-01" : year + "-" + String(mon + 1).padStart(2,"0");
     const monthEnd = new Date(nextMonth + "-01T00:00:00+05:00");
+    await sql`UPDATE birthday_bookings SET status='expired',updated_at=now()
+      WHERE status='held' AND hold_expires_at IS NOT NULL AND hold_expires_at <= now()`;
     const rows = await sql`SELECT starts_at, ends_at FROM birthday_bookings
       WHERE zone_no=${zone}
         AND status IN ('held','awaiting_payment','awaiting_admin','confirmed')
-        AND (status NOT IN ('held','awaiting_payment') OR hold_expires_at IS NULL OR hold_expires_at > now())
         AND starts_at < ${monthEnd} AND ends_at > ${monthStart}`;
     const daysInMonth = new Date(Date.UTC(year, mon, 0)).getUTCDate();
     const today = tashkentToday();
@@ -113,22 +114,25 @@ async function publicBookingApi(req, url) {
     const end = new Date(start.getTime() + 4*60*60*1000);
     const code = "FL-" + date.replaceAll("-","").slice(2) + "-" + randomBytes(3).toString("hex").toUpperCase();
     try {
+      await sql`UPDATE birthday_bookings SET status='expired',updated_at=now()
+        WHERE status='held' AND hold_expires_at IS NOT NULL AND hold_expires_at <= now()`;
       const rows = await sql`INSERT INTO birthday_bookings
         (public_code, telegram_user_id, telegram_username, customer_name, child_name,
          child_age, phone, children_count, zone_no, starts_at, ends_at,
          party_minutes, cleanup_minutes, deposit_amount, status, extras, language)
         VALUES (${code},${tgUser.id},${tgUser.username || null},${customer},${child},
          ${age},${phone},${children},${zone},${start},${end},
-         180,60,100000,'awaiting_admin',${String(body.extras || "").slice(0,1000)},${lang})
+         180,60,100000,'held',${String(body.extras || "").slice(0,1000)},${lang})
         RETURNING id,public_code,starts_at,ends_at,zone_no`;
       const b = rows[0];
+      await sql`UPDATE birthday_bookings SET hold_expires_at=now()+interval '30 minutes',updated_at=now() WHERE id=${b.id}`;
       const message = "🎂 НОВАЯ ЗАЯВКА FUNLANDIA\n\nКод: " + b.public_code +
         "\nКлиент: " + customer + "\nИменинник: " + child + ", " + (age ?? "возраст не указан") +
         "\nТелефон: " + phone + "\nДата и время: " + date + " " + time +
         "\nЗона: №" + zone + "\nДетей: " + children + "\nВзрослых: " + adults +
-        "\nАванс: 100 000 сум\n\nСтатус: ожидает подтверждения администратора.";
+        "\nАванс: 100 000 сум\n\nСтатус: временная бронь на 30 минут, ожидает подтверждения администратора.";
       await telegramSend(ADMIN_CHAT_ID,message);
-      return json({ok:true,booking:b,message:"Заявка отправлена администратору. Бронирование будет подтверждено после проверки."},201);
+      return json({ok:true,booking:b,message:"Заявка отправлена администратору. Время удерживается 30 минут и будет подтверждено после проверки."},201);
     } catch (e) {
       if (e?.code === "23P01" || e?.code === "23505")
         return json({error:"Это время только что заняли. Выберите другой свободный слот."},409);
@@ -171,6 +175,8 @@ async function handler(req) {
       const nextMonth = mon === 12 ? (year+1)+"-01" : year+"-"+String(mon+1).padStart(2,"0");
       const from = new Date(month+"-01T00:00:00+05:00");
       const to = new Date(nextMonth+"-01T00:00:00+05:00");
+      await sql`UPDATE birthday_bookings SET status='expired',updated_at=now()
+        WHERE status='held' AND hold_expires_at IS NOT NULL AND hold_expires_at <= now()`;
       const rows = await sql`SELECT id,public_code,customer_name,child_name,child_age,phone,
         children_count,zone_no,starts_at,ends_at,status,deposit_amount,created_at
         FROM birthday_bookings WHERE starts_at >= ${from} AND starts_at < ${to}
@@ -183,8 +189,10 @@ async function handler(req) {
       if (!["confirmed","rejected","cancelled"].includes(body.status))
         return json({error:"Недопустимый статус бронирования."},400);
       const bookingId = Number(bookingMatch[1]);
+      await sql`UPDATE birthday_bookings SET status='expired',updated_at=now()
+        WHERE id=${bookingId} AND status='held' AND hold_expires_at IS NOT NULL AND hold_expires_at <= now()`;
       const rows = await sql`UPDATE birthday_bookings SET status=${body.status},updated_at=now()
-        WHERE id=${bookingId} AND status IN ('awaiting_admin','confirmed','rejected','cancelled')
+        WHERE id=${bookingId} AND status IN ('held','awaiting_admin','confirmed')
         RETURNING id,public_code,telegram_user_id,language,child_name,starts_at,zone_no,status`;
       if (!rows.length) return json({error:"Заявка не найдена или уже обрабатывается."},404);
       const booking = rows[0];
@@ -265,7 +273,7 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, "0.0.0.0", async () => {
   try {
     await sql`SELECT 1`;
-    const schema = readFileSync(new URL("../booking/schema.sql", import.meta.url), "utf8");
+    const schema = readFileSync(new URL("./booking_schema.sql", import.meta.url), "utf8");
     await sql.unsafe(schema);
     const rows = await sql`SELECT to_regclass('public.birthday_requests') AS requests_table, to_regclass('public.birthday_bookings') AS bookings_table`;
     console.log("FUNLANDIA_ADMIN_READY port=" + PORT + " database=" +
