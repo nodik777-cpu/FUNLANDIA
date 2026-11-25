@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS birthday_bookings (
     admin_note TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CHECK (ends_at > starts_at),
+    CHECK (ends_at > starts_at)
 );
 
 ALTER TABLE birthday_bookings ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'ru';
