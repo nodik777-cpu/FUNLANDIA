@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#180d2d">
+<title>FUNLANDIA — Бронирование дня рождения</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{color-scheme:dark;--bg:#140d25;--card:#24183b;--line:#ffffff20;--muted:#c4b8d2;--gold:#ffd36e;--pink:#ff70a6;--green:#78e0ad;--red:#ff8585}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#38204e,#140d25 58%);color:#fff;font:15px system-ui,-apple-system,sans-serif}
+main{max-width:680px;margin:auto;padding:18px 14px 48px}.brand{text-align:center;font-size:27px;font-weight:950;letter-spacing:3px;color:var(--gold)}.lead{text-align:center;color:var(--muted);line-height:1.5;margin:6px 0 20px}
+.panel{background:#24183bdb;border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0}.panel h2{font-size:17px;margin:0 0 13px}.zones{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.zone{border:1px solid #8066a2;background:#34234d;color:white;border-radius:13px;padding:13px 6px;font-weight:750}.zone.active{background:var(--gold);color:#241334;border-color:var(--gold)}
+.monthbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.monthbar strong{font-size:16px}.monthbar button{background:#34234d;color:#fff;border:1px solid #8066a2;border-radius:10px;padding:8px 12px}
+.week,.days{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}.week div{text-align:center;color:var(--muted);font-size:11px;padding:5px 0}.day{min-height:42px;border:1px solid transparent;border-radius:10px;background:#ffffff0d;color:#fff;font-weight:700}.day:disabled{opacity:.25}.day.available{border-color:#8066a2}.day.selected{background:var(--gold);color:#241334;border-color:var(--gold)}.day.today{box-shadow:inset 0 0 0 1px var(--pink)}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.slot{padding:12px 6px;border-radius:12px;border:1px solid #8066a2;background:#34234d;color:#fff;font-weight:750}.slot:disabled{opacity:.25;text-decoration:line-through}.slot.active{background:var(--gold);color:#241334;border-color:var(--gold)}
+label{display:block;color:var(--muted);font-size:13px;margin:12px 0 5px}input,textarea{width:100%;background:#160f27;border:1px solid #8066a2;border-radius:11px;padding:12px;color:#fff;font:inherit}textarea{min-height:72px;resize:vertical}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.note{color:var(--muted);font-size:12px;line-height:1.5}.deposit{color:var(--gold);font-weight:800}.submit{width:100%;border:0;border-radius:13px;background:linear-gradient(135deg,#ffd36e,#ff9f71);color:#241334;font-weight:900;font-size:16px;padding:15px;margin-top:15px}.submit:disabled{opacity:.5}.message{display:none;border-radius:13px;padding:14px;line-height:1.5;margin-top:12px}.message.ok{display:block;background:#1d503b}.message.err{display:block;background:#592b3b}.hidden{display:none!important}
+</style>
+</head>
+<body><main>
+<div class="brand">FUNLANDIA</div>
+<p class="lead">Бронирование дня рождения<br>Выберите зону, дату и свободное время</p>
+<section class="panel"><h2>1. Выберите зону</h2><div class="zones">
+<button class="zone active" data-zone="1">🎈 Зона №1</button><button class="zone" data-zone="2">🎈 Зона №2</button><button class="zone" data-zone="3">🎈 Зона №3</button>
+</div></section>
+<section class="panel"><h2>2. Выберите дату</h2>
+<div class="monthbar"><button id="prev">‹</button><strong id="monthLabel">—</strong><button id="next">›</button></div>
+<div class="week"><div>Пн</div><div>Вт</div><div>Ср</div><div>Чт</div><div>Пт</div><div>Сб</div><div>Вс</div></div>
+<div class="days" id="days"></div>
+<p class="note">Серые даты недоступны. По понедельникам бронирование начинается с 14:00.</p>
+</section>
+<section class="panel"><h2>3. Выберите время</h2><div id="slotPrompt" class="note">Сначала выберите свободную дату.</div><div class="slots" id="slots"></div></section>
+<section class="panel"><h2>4. Данные для заявки</h2>
+<form id="bookingForm">
+<label>Ваше имя *</label><input name="customer_name" id="customerName" maxlength="120" required>
+<label>Имя именинника *</label><input name="child_name" maxlength="120" required>
+<div class="grid2"><div><label>Возраст именинника</label><input name="child_age" type="number" min="0" max="18" inputmode="numeric"></div><div><label>Телефон *</label><input name="phone" type="tel" maxlength="40" placeholder="+998..." required></div></div>
+<div class="grid2"><div><label>Количество детей *</label><input name="children_count" type="number" min="1" max="60" value="1" required></div><div><label>Количество взрослых</label><input name="adults_count" type="number" min="0" max="60" value="0"></div></div>
+<label>Пожелания</label><textarea name="extras" maxlength="1000" placeholder="Украшение, торт и другие пожелания"></textarea>
+<p class="note">Праздник длится 3 часа, после него предусмотрен 1 час на уборку. Аванс — <span class="deposit">100 000 сум</span>. После отправки заявки выбранное время блокируется до решения администратора. Бронь считается подтверждённой только после подтверждения администратором.</p>
+<button class="submit" id="submit" type="submit" disabled>Отправить заявку</button>
+</form><div id="message" class="message"></div>
+</section>
+</main>
+<script>
+const tg=window.Telegram?.WebApp;tg?.ready();tg?.expand();
+const initData=tg?.initData||"";
+const user=tg?.initDataUnsafe?.user||{};
+const lang=(user.language_code||"").startsWith("uz")?"uz":(user.language_code||"").startsWith("en")?"en":"ru";
+document.getElementById("customerName").value=[user.first_name,user.last_name].filter(Boolean).join(" ");
+const state={zone:1,month:new Date(new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tashkent"}).format(new Date())+"T12:00:00+05:00"),date:null,time:null,calendar:null};
+const $=id=>document.getElementById(id);
+async function api(path,opts={}){const r=await fetch(path,{...opts,headers:{"content-type":"application/json","x-telegram-init-data":initData,...opts.headers}});const data=await r.json();if(!r.ok)throw Error(data.error||"Ошибка запроса");return data}
+function monthKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
+function dateKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function todayKey(){return new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tashkent"}).format(new Date())}
+function showMessage(text,ok){$("message").textContent=text;$("message").className="message "+(ok?"ok":"err")}
+async function loadCalendar(){state.date=null;state.time=null;$("slots").innerHTML="";$("slotPrompt").textContent="Сначала выберите свободную дату.";$("submit").disabled=true;
+$("monthLabel").textContent=state.month.toLocaleDateString("ru-RU",{month:"long",year:"numeric",timeZone:"Asia/Tashkent"});
+try{state.calendar=await api("/api/public/calendar?month="+monthKey(state.month)+"&zone="+state.zone);renderDays()}catch(e){showMessage(e.message,false)}}
+function renderDays(){const first=new Date(state.month.getFullYear(),state.month.getMonth(),1);let offset=(first.getDay()+6)%7;const days=$("days");days.innerHTML="";
+for(let i=0;i<offset;i++){const blank=document.createElement("div");days.append(blank)}
+for(const item of state.calendar.days){const btn=document.createElement("button");btn.className="day"+(item.available?" available":"")+(item.date===todayKey()?" today":"");btn.textContent=String(Number(item.date.slice(-2)));btn.disabled=!item.available;btn.onclick=()=>selectDate(item);days.append(btn)}
+}
+function selectDate(item){state.date=item.date;state.time=null;document.querySelectorAll(".day").forEach(b=>b.classList.remove("selected"));const buttons=[...document.querySelectorAll(".day")];const chosen=buttons.find(b=>Number(b.textContent)===Number(item.date.slice(-2))&& !b.disabled);chosen?.classList.add("selected");$("slots").innerHTML="";$("slotPrompt").textContent="Дата: "+new Date(item.date+"T12:00:00+05:00").toLocaleDateString("ru-RU",{day:"numeric",month:"long"});
+for(const slot of item.slots){const b=document.createElement("button");b.className="slot";b.textContent=slot.time;b.disabled=!slot.available;b.onclick=()=>{state.time=slot.time;document.querySelectorAll(".slot").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("submit").disabled=false};$("slots").append(b)}
+}
+document.querySelectorAll(".zone").forEach(b=>b.onclick=()=>{document.querySelectorAll(".zone").forEach(x=>x.classList.toggle("active",x===b));state.zone=Number(b.dataset.zone);loadCalendar()});
+$("prev").onclick=()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()-1,1);loadCalendar()};
+$("next").onclick=()=>{state.month=new Date(state.month.getFullYear(),state.month.getMonth()+1,1);loadCalendar()};
+$("bookingForm").onsubmit=async e=>{e.preventDefault();if(!state.date||!state.time){showMessage("Выберите дату и время.",false);return}
+const form=new FormData(e.currentTarget);const payload=Object.fromEntries(form.entries());payload.zone_no=state.zone;payload.date=state.date;payload.time=state.time;payload.language=lang;
+$("submit").disabled=true;$("submit").textContent="Отправляем…";
+try{const result=await api("/api/public/bookings",{method:"POST",body:JSON.stringify(payload)});showMessage("Заявка №"+result.booking.public_code+" отправлена! "+result.message,true);e.currentTarget.reset();$("customerName").value=[user.first_name,user.last_name].filter(Boolean).join(" ");$("slots").innerHTML="";$("slotPrompt").textContent="Заявка принята. Вы можете выбрать другую дату после обновления календаря.";await loadCalendar()}
+catch(err){showMessage(err.message,false);$("submit").disabled=false}
+finally{$("submit").textContent="Отправить заявку"}
+};
+if(!initData){showMessage("Откройте календарь через Telegram-бот FUNLANDIA, чтобы продолжить.",false);$("submit").disabled=true}
+loadCalendar();
+</script></body></html>
