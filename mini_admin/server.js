@@ -104,7 +104,6 @@ async function publicBookingApi(req, url) {
     const time = String(body.time || "");
     const paymentMethod = String(body.payment_method || "");
     const allowed = validDate(date) && slotsForDate(date).includes(time) &&
-      /^([01]\\d|2[0-3]):(00|30)$/.test(time) &&
       (paymentMethod === "payme" || paymentMethod === "click");
     const customer = String(body.customer_name || "").trim().slice(0,120);
     const child = String(body.child_name || "").trim().slice(0,120);
