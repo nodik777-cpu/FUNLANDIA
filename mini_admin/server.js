@@ -44,7 +44,7 @@ function validDate(value) {
 }
 function slotsForDate(date) {
   const weekday = new Date(date + "T12:00:00+05:00").getUTCDay();
-  return weekday === 1 ? ["14:00"] : ["10:00","14:00","18:00"];
+  return weekday === 1 ? ["14:00","18:00"] : ["10:00","14:00","18:00"];
 }
 async function telegramSend(chatId, text) {
   if (!chatId || !BOT_TOKEN) return;
