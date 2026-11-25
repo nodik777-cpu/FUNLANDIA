@@ -102,4 +102,8 @@ CREATE TABLE IF NOT EXISTS birthday_admin_actions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE birthday_admin_actions DROP CONSTRAINT IF EXISTS birthday_admin_actions_action_check;
+ALTER TABLE birthday_admin_actions ADD CONSTRAINT birthday_admin_actions_action_check
+  CHECK (action IN ('confirm','reject','reschedule','note','release'));
+
 -- Admin calendar reads bookings by month; payment status remains separate from admin approval.
