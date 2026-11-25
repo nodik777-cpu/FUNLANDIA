@@ -44,7 +44,13 @@ function validDate(value) {
 }
 function slotsForDate(date) {
   const weekday = new Date(date + "T12:00:00+05:00").getUTCDay();
-  return weekday === 1 ? ["14:00","18:00"] : ["10:00","14:00","18:00"];
+  const firstHour = weekday === 1 ? 14 : 10;
+  const slots = [];
+  for (let minutes = firstHour * 60; minutes <= 18 * 60; minutes += 30) {
+    slots.push(String(Math.floor(minutes / 60)).padStart(2,"0") + ":" +
+      String(minutes % 60).padStart(2,"0"));
+  }
+  return slots;
 }
 async function telegramSend(chatId, text) {
   if (!chatId || !BOT_TOKEN) return;
@@ -84,7 +90,7 @@ async function publicBookingApi(req, url) {
         const start = new Date(date + "T" + time + ":00+05:00");
         const end = new Date(start.getTime() + 4*60*60*1000);
         const busy = rows.some(row => new Date(row.starts_at) < end && new Date(row.ends_at) > start);
-        return {time, available: date >= today && !busy};
+        return {time, available: date >= today && start > new Date() && !busy, endsAt:end.toISOString()};
       });
       days.push({date, available:date >= today && slots.some(x=>x.available), slots});
     }
@@ -96,7 +102,10 @@ async function publicBookingApi(req, url) {
     const zone = Number(body.zone_no);
     const date = String(body.date || "");
     const time = String(body.time || "");
-    const allowed = validDate(date) && slotsForDate(date).includes(time);
+    const paymentMethod = String(body.payment_method || "");
+    const allowed = validDate(date) && slotsForDate(date).includes(time) &&
+      /^([01]\\d|2[0-3]):(00|30)$/.test(time) &&
+      (paymentMethod === "payme" || paymentMethod === "click");
     const customer = String(body.customer_name || "").trim().slice(0,120);
     const child = String(body.child_name || "").trim().slice(0,120);
     const phone = String(body.phone || "").trim().slice(0,40);
@@ -119,10 +128,11 @@ async function publicBookingApi(req, url) {
       const rows = await sql`INSERT INTO birthday_bookings
         (public_code, telegram_user_id, telegram_username, customer_name, child_name,
          child_age, phone, children_count, zone_no, starts_at, ends_at,
-         party_minutes, cleanup_minutes, deposit_amount, status, extras, language)
+         party_minutes, cleanup_minutes, deposit_amount, status, extras, language,
+         planned_ends_at, payment_method)
         VALUES (${code},${tgUser.id},${tgUser.username || null},${customer},${child},
          ${age},${phone},${children},${zone},${start},${end},
-         180,60,100000,'held',${String(body.extras || "").slice(0,1000)},${lang})
+         180,60,100000,'held',${String(body.extras || "").slice(0,1000)},${lang},${end},${paymentMethod})
         RETURNING id,public_code,starts_at,ends_at,zone_no`;
       const b = rows[0];
       await sql`UPDATE birthday_bookings SET hold_expires_at=now()+interval '30 minutes',updated_at=now() WHERE id=${b.id}`;
@@ -130,7 +140,8 @@ async function publicBookingApi(req, url) {
         "\nКлиент: " + customer + "\nИменинник: " + child + ", " + (age ?? "возраст не указан") +
         "\nТелефон: " + phone + "\nДата и время: " + date + " " + time +
         "\nЗона: №" + zone + "\nДетей: " + children + "\nВзрослых: " + adults +
-        "\nАванс: 100 000 сум\n\nСтатус: временная бронь на 30 минут, ожидает подтверждения администратора.";
+        "\nАванс: 100 000 сум\nСпособ оплаты: " + (paymentMethod === "payme" ? "Payme" : "Click") +
+        "\n\nСтатус: временная бронь на 30 минут, ожидает подтверждения администратора.";
       await telegramSend(ADMIN_CHAT_ID,message);
       return json({ok:true,booking:b,message:"Заявка отправлена администратору. Время удерживается 30 минут и будет подтверждено после проверки."},201);
     } catch (e) {
@@ -178,7 +189,7 @@ async function handler(req) {
       await sql`UPDATE birthday_bookings SET status='expired',updated_at=now()
         WHERE status='held' AND hold_expires_at IS NOT NULL AND hold_expires_at <= now()`;
       const rows = await sql`SELECT id,public_code,customer_name,child_name,child_age,phone,
-        children_count,zone_no,starts_at,ends_at,status,deposit_amount,created_at
+        children_count,zone_no,starts_at,ends_at,planned_ends_at,released_at,status,deposit_amount,payment_method,created_at
         FROM birthday_bookings WHERE starts_at >= ${from} AND starts_at < ${to}
         ORDER BY starts_at,zone_no LIMIT 500`;
       return json(rows);
@@ -186,6 +197,20 @@ async function handler(req) {
     const bookingMatch = url.pathname.match(/^\/api\/bookings\/(\d+)$/);
     if (bookingMatch && req.method === "PATCH") {
       const body = await req.json();
+      if (body.status === "released") {
+        const released = await sql`UPDATE birthday_bookings
+          SET status='released',
+              ends_at=LEAST(now(),COALESCE(planned_ends_at,ends_at)),
+              released_at=now(),released_by=${user.id},updated_at=now()
+          WHERE id=${Number(bookingMatch[1])} AND status='confirmed'
+            AND starts_at < now() AND ends_at > now()
+          RETURNING id,public_code,zone_no,starts_at,ends_at`;
+        if (!released.length) return json({error:"Освободить можно только начавшуюся подтверждённую бронь, которая ещё занимает зону."},409);
+        const b=released[0];
+        await sql`INSERT INTO birthday_admin_actions (booking_id,admin_telegram_id,action,note)
+          VALUES (${b.id},${user.id},'release',${String(body.note || "Зона освобождена администратором досрочно").slice(0,500)})`;
+        return json({ok:true,id:b.id,status:"released",released_at:b.ends_at});
+      }
       if (!["confirmed","rejected","cancelled"].includes(body.status))
         return json({error:"Недопустимый статус бронирования."},400);
       const bookingId = Number(bookingMatch[1]);
