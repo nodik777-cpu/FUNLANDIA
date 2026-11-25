@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS birthday_bookings (
     zone_no SMALLINT NOT NULL CHECK (zone_no BETWEEN 1 AND 3),
     starts_at TIMESTAMPTZ NOT NULL,
     ends_at TIMESTAMPTZ NOT NULL,
+    planned_ends_at TIMESTAMPTZ,
+    released_at TIMESTAMPTZ,
+    released_by BIGINT,
+    payment_method TEXT NOT NULL DEFAULT 'payme' CHECK (payment_method IN ('payme','click')),
     party_minutes SMALLINT NOT NULL DEFAULT 180 CHECK (party_minutes = 180),
     cleanup_minutes SMALLINT NOT NULL DEFAULT 60 CHECK (cleanup_minutes = 60),
     deposit_amount INTEGER NOT NULL DEFAULT 100000 CHECK (deposit_amount = 100000),
@@ -31,6 +35,32 @@ CREATE TABLE IF NOT EXISTS birthday_bookings (
 );
 
 ALTER TABLE birthday_bookings ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'ru';
+ALTER TABLE birthday_bookings ADD COLUMN IF NOT EXISTS planned_ends_at TIMESTAMPTZ;
+ALTER TABLE birthday_bookings ADD COLUMN IF NOT EXISTS released_at TIMESTAMPTZ;
+ALTER TABLE birthday_bookings ADD COLUMN IF NOT EXISTS released_by BIGINT;
+ALTER TABLE birthday_bookings ADD COLUMN IF NOT EXISTS payment_method TEXT NOT NULL DEFAULT 'payme';
+UPDATE birthday_bookings SET planned_ends_at=ends_at WHERE planned_ends_at IS NULL;
+
+-- Existing bookings keep their original planned end; ends_at becomes the actual occupancy end
+-- when an administrator releases a zone early.
+DO $
+DECLARE c RECORD;
+BEGIN
+  FOR c IN SELECT conname FROM pg_constraint
+    WHERE conrelid='birthday_bookings'::regclass
+      AND contype='c'
+      AND pg_get_constraintdef(oid) ILIKE '%ends_at - starts_at%'
+  LOOP
+    EXECUTE format('ALTER TABLE birthday_bookings DROP CONSTRAINT %I', c.conname);
+  END LOOP;
+END $;
+
+ALTER TABLE birthday_bookings DROP CONSTRAINT IF EXISTS birthday_bookings_status_check;
+ALTER TABLE birthday_bookings ADD CONSTRAINT birthday_bookings_status_check
+  CHECK (status IN ('held','awaiting_payment','awaiting_admin','confirmed','rejected','cancelled','expired','released'));
+ALTER TABLE birthday_bookings DROP CONSTRAINT IF EXISTS birthday_bookings_payment_method_check;
+ALTER TABLE birthday_bookings ADD CONSTRAINT birthday_bookings_payment_method_check
+  CHECK (payment_method IN ('payme','click'));
 
 -- Prevent two active reservations/holds from occupying the same zone at overlapping times.
 ALTER TABLE birthday_bookings
@@ -68,7 +98,7 @@ CREATE TABLE IF NOT EXISTS birthday_admin_actions (
     id BIGSERIAL PRIMARY KEY,
     booking_id BIGINT NOT NULL REFERENCES birthday_bookings(id) ON DELETE CASCADE,
     admin_telegram_id BIGINT NOT NULL,
-    action TEXT NOT NULL CHECK (action IN ('confirm','reject','reschedule','note')),
+    action TEXT NOT NULL CHECK (action IN ('confirm','reject','reschedule','note','release')),
     note TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
