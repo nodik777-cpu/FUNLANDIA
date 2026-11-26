@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS birthday_admin_actions (
     id BIGSERIAL PRIMARY KEY,
     booking_id BIGINT NOT NULL REFERENCES birthday_bookings(id) ON DELETE CASCADE,
     admin_telegram_id BIGINT NOT NULL,
-    action TEXT NOT NULL CHECK (action IN ('confirm','reject','reschedule','note','release')),
+    action TEXT NOT NULL CHECK (action IN ('confirm','reject','reschedule','note','release','extend')),
     note TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
