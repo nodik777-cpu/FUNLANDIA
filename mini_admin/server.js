@@ -196,6 +196,34 @@ async function handler(req) {
     const bookingMatch = url.pathname.match(/^\/api\/bookings\/(\d+)$/);
     if (bookingMatch && req.method === "PATCH") {
       const body = await req.json();
+      if (body.action === "extend") {
+        const extraMinutes = Number(body.extra_minutes);
+        if (!Number.isInteger(extraMinutes) || extraMinutes < 30 || extraMinutes > 240 || extraMinutes % 30 !== 0)
+          return json({error:"Дополнительное время можно добавить от 30 до 240 минут с шагом 30 минут."},400);
+        const current = await sql`SELECT id,zone_no,starts_at,ends_at,planned_ends_at,status
+          FROM birthday_bookings WHERE id=${Number(bookingMatch[1])} FOR UPDATE`;
+        if (!current.length || current[0].status !== "confirmed")
+          return json({error:"Продлить можно только подтверждённую бронь."},409);
+        const booking = current[0];
+        const oldEnd = new Date(booking.ends_at);
+        const newEnd = new Date(oldEnd.getTime() + extraMinutes*60*1000);
+        const localEnd = new Date(newEnd.toLocaleString("en-US",{timeZone:"Asia/Tashkent"}));
+        if (localEnd.getHours() > 22 || (localEnd.getHours() === 22 && (localEnd.getMinutes() > 0 || localEnd.getSeconds() > 0)))
+          return json({error:"Продление выходит за время работы FUNLANDIA до 22:00."},409);
+        const overlap = await sql`SELECT id FROM birthday_bookings
+          WHERE zone_no=${booking.zone_no} AND id<>${booking.id}
+            AND status IN ('held','awaiting_payment','awaiting_admin','confirmed')
+            AND starts_at < ${newEnd} AND ends_at > ${oldEnd}
+          LIMIT 1`;
+        if (overlap.length) return json({error:"Нельзя продлить: после этого времени уже есть другая бронь."},409);
+        const updated = await sql`UPDATE birthday_bookings
+          SET ends_at=${newEnd},planned_ends_at=${newEnd},updated_at=now()
+          WHERE id=${booking.id} AND status='confirmed'
+          RETURNING id,public_code,zone_no,ends_at`;
+        await sql`INSERT INTO birthday_admin_actions (booking_id,admin_telegram_id,action,note)
+          VALUES (${booking.id},${user.id},'extend',${"Добавлено "+extraMinutes+" минут"})`;
+        return json({ok:true,id:booking.id,status:"confirmed",ends_at:updated[0].ends_at});
+      }
       if (body.status === "released") {
         const released = await sql`UPDATE birthday_bookings
           SET status='released',
