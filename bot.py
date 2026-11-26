@@ -105,7 +105,7 @@ def detect_message_language(text: str, fallback: str = "ru") -> str:
     return fallback if fallback in ("ru", "uz", "en") else "en"
 
 
-def menu(lang="ru"):
+def menu(lang="ru", admin=False):
     # Full Telegram menu plus a separate Mini App launcher at the top.
     app_labels = {
         "ru": "🎡 Открыть графическое меню FUNLANDIA",
@@ -140,6 +140,8 @@ def menu(lang="ru"):
         )
     ]]
     keyboard.extend(two_col(rows))
+    if admin:
+        keyboard.append([KeyboardButton("🛠 Панель администратора", web_app=WebAppInfo(url="https://funlandia-mini-app-test.up.railway.app/admin"))])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
 
 def funlandia_menu(lang="ru"):
@@ -199,7 +201,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "uz": ("🎉 FUNLANDIA'GA XUSH KELIBSIZ! 🎉\n\nBu yerda bolalar o‘ynaydi, quvonadi va yorqin taassurotlar oladi, ota-onalar esa maroqli dam oladi! ❤️\n\n🛝 Labirintlar • 🤸 Batutlar • 🎢 Tepaliklar • 🎯 Pnevmatik to‘plar • 🧗 Tarzanka\n\nKerakli bo‘limni tanlang 👇"),
         "en": ("🎉 WELCOME TO FUNLANDIA! 🎉\n\nA place where children play, have fun and enjoy bright emotions, while parents relax! ❤️\n\n🛝 Labyrinths • 🤸 Trampolines • 🎢 Slides • 🎯 Air Cannons • 🧗 Rope Adventure\n\nChoose a section below 👇")
     }
-    await update.effective_message.reply_text(messages[lang], reply_markup=menu(lang))
+    is_admin_user = bool(update.effective_user and ADMIN_CHAT_ID and str(update.effective_user.id) == str(ADMIN_CHAT_ID))
+    await update.effective_message.reply_text(messages[lang], reply_markup=menu(lang, admin=is_admin_user))
 
 
 async def uz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
